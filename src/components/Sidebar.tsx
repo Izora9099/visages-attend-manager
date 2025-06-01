@@ -27,7 +27,21 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
       <div className="p-4 border-b border-blue-800">
         <div className="flex items-center justify-between">
           {isOpen && (
-            <h1 className="text-xl font-bold">Attendance Pro</h1>
+            <div className="flex items-center space-x-3">
+              <img 
+                src="/lovable-uploads/3b724283-f745-44c5-bd71-d877298dccf2.png" 
+                alt="FACE.IT Logo" 
+                className="w-8 h-8"
+              />
+              <h1 className="text-xl font-bold">FACE.IT</h1>
+            </div>
+          )}
+          {!isOpen && (
+            <img 
+              src="/lovable-uploads/3b724283-f745-44c5-bd71-d877298dccf2.png" 
+              alt="FACE.IT Logo" 
+              className="w-8 h-8 mx-auto"
+            />
           )}
           <button
             onClick={onToggle}

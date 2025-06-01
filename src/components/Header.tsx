@@ -36,7 +36,16 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             <Menu size={20} />
           </Button>
           
-          <div className="relative">
+          <div className="flex items-center space-x-3">
+            <img 
+              src="/lovable-uploads/3b724283-f745-44c5-bd71-d877298dccf2.png" 
+              alt="FACE.IT Logo" 
+              className="w-8 h-8"
+            />
+            <span className="text-xl font-bold text-blue-900">FACE.IT</span>
+          </div>
+          
+          <div className="relative ml-8">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <Input
               placeholder="Search students, attendance..."
