@@ -33,7 +33,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex w-full">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex w-full transition-colors">
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 

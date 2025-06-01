@@ -21,15 +21,15 @@ const menuItems = [
 export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarProps) => {
   return (
     <div className={cn(
-      "fixed left-0 top-0 h-full bg-blue-900 text-white transition-all duration-300 z-30",
+      "fixed left-0 top-0 h-full bg-blue-900 dark:bg-gray-900 text-white transition-all duration-300 z-30",
       isOpen ? "w-64" : "w-16"
     )}>
-      <div className="p-4 border-b border-blue-800">
+      <div className="p-4 border-b border-blue-800 dark:border-gray-700">
         <div className="flex items-center justify-between">
           {isOpen && (
             <div className="flex items-center space-x-3">
               <img 
-                src="/lovable-uploads/3b724283-f745-44c5-bd71-d877298dccf2.png" 
+                src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
                 alt="FACE.IT Logo" 
                 className="w-8 h-8"
               />
@@ -38,14 +38,14 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
           )}
           {!isOpen && (
             <img 
-              src="/lovable-uploads/3b724283-f745-44c5-bd71-d877298dccf2.png" 
+              src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
               alt="FACE.IT Logo" 
               className="w-8 h-8 mx-auto"
             />
           )}
           <button
             onClick={onToggle}
-            className="p-2 rounded-lg hover:bg-blue-800 transition-colors"
+            className="p-2 rounded-lg hover:bg-blue-800 dark:hover:bg-gray-800 transition-colors"
           >
             {isOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -60,8 +60,8 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={cn(
-                "w-full flex items-center px-4 py-3 text-left hover:bg-blue-800 transition-colors",
-                activeTab === item.id && "bg-blue-800 border-r-4 border-blue-400"
+                "w-full flex items-center px-4 py-3 text-left hover:bg-blue-800 dark:hover:bg-gray-800 transition-colors",
+                activeTab === item.id && "bg-blue-800 dark:bg-gray-800 border-r-4 border-blue-400 dark:border-blue-500"
               )}
             >
               <Icon size={20} className="flex-shrink-0" />
