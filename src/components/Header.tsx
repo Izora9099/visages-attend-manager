@@ -42,6 +42,24 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
     }
   };
 
+  // Function to handle logout - ready for Django integration
+  const handleLogout = () => {
+    // TODO: Implement Django logout API call
+    console.log('Logout clicked - integrate with Django auth');
+  };
+
+  // Function to handle profile - ready for Django integration
+  const handleProfile = () => {
+    // TODO: Navigate to Django profile page
+    console.log('Profile clicked - navigate to Django profile');
+  };
+
+  // Function to handle settings - ready for Django integration
+  const handleSettings = () => {
+    // TODO: Navigate to Django settings page
+    console.log('Settings clicked - navigate to Django settings');
+  };
+
   return (
     <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 transition-colors">
       <div className="flex items-center justify-between">
@@ -50,7 +68,7 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="lg:hidden hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <Menu size={20} />
           </Button>
@@ -69,6 +87,7 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             <Input
               placeholder="Search students, attendance..."
               className="pl-10 w-80 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+              // TODO: Implement search functionality with Django backend
             />
           </div>
         </div>
@@ -100,16 +119,25 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-              <DropdownMenuItem className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <DropdownMenuItem 
+                onClick={handleProfile}
+                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <DropdownMenuItem 
+                onClick={handleSettings}
+                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
-              <DropdownMenuItem className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <DropdownMenuItem 
+                onClick={handleLogout}
+                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

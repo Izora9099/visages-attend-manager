@@ -1,5 +1,5 @@
 
-import { Users, ClipboardList, Camera, BarChart3, UserCog, Layout, Menu, X } from "lucide-react";
+import { Users, ClipboardList, Camera, BarChart3, UserCog, Layout } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -25,30 +25,15 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
       isOpen ? "w-64" : "w-16"
     )}>
       <div className="p-4 border-b border-blue-800 dark:border-gray-700">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-center">
+          <img 
+            src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
+            alt="FACE.IT Logo" 
+            className="w-8 h-8"
+          />
           {isOpen && (
-            <div className="flex items-center space-x-3">
-              <img 
-                src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
-                alt="FACE.IT Logo" 
-                className="w-8 h-8"
-              />
-              <h1 className="text-xl font-bold">FACE.IT</h1>
-            </div>
+            <h1 className="text-xl font-bold ml-3">FACE.IT</h1>
           )}
-          {!isOpen && (
-            <img 
-              src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
-              alt="FACE.IT Logo" 
-              className="w-8 h-8 mx-auto"
-            />
-          )}
-          <button
-            onClick={onToggle}
-            className="p-2 rounded-lg hover:bg-blue-800 dark:hover:bg-gray-800 transition-colors"
-          >
-            {isOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
         </div>
       </div>
       
@@ -63,6 +48,7 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
                 "w-full flex items-center px-4 py-3 text-left hover:bg-blue-800 dark:hover:bg-gray-800 transition-colors",
                 activeTab === item.id && "bg-blue-800 dark:bg-gray-800 border-r-4 border-blue-400 dark:border-blue-500"
               )}
+              title={!isOpen ? item.label : undefined}
             >
               <Icon size={20} className="flex-shrink-0" />
               {isOpen && <span className="ml-3">{item.label}</span>}
