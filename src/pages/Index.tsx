@@ -1,11 +1,50 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import { useState } from "react";
+import { Sidebar } from "@/components/Sidebar";
+import { Header } from "@/components/Header";
+import { Dashboard } from "@/components/Dashboard";
+import { Students } from "@/components/Students";
+import { AttendanceTable } from "@/components/AttendanceTable";
+import { Reports } from "@/components/Reports";
+import { AdminUsers } from "@/components/AdminUsers";
+import { FacialRecognition } from "@/components/FacialRecognition";
 
 const Index = () => {
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const renderActiveComponent = () => {
+    switch (activeTab) {
+      case "dashboard":
+        return <Dashboard />;
+      case "students":
+        return <Students />;
+      case "attendance":
+        return <AttendanceTable />;
+      case "facial-recognition":
+        return <FacialRecognition />;
+      case "reports":
+        return <Reports />;
+      case "admin-users":
+        return <AdminUsers />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <div className="min-h-screen bg-gray-50 flex w-full">
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+      />
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
+        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+        <main className="flex-1 p-6">
+          {renderActiveComponent()}
+        </main>
       </div>
     </div>
   );
