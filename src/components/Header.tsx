@@ -72,21 +72,22 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
           >
             <Menu size={20} />
           </Button>
-          
+        
           <div className="flex items-center space-x-3">
-            <img 
+           { /*  <img 
               src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
               alt="FACE.IT Logo" 
               className="w-8 h-8"
-            />
+            />  */
+       }
             <span className="text-xl font-bold text-blue-900 dark:text-blue-400">FACE.IT</span>
           </div>
-          
+        
           <div className="relative ml-8">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={20} />
             <Input
               placeholder="Search students, attendance..."
-              className="pl-10 w-80 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+              className="pl-10 w-96 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
               // TODO: Implement search functionality with Django backend
             />
           </div>
