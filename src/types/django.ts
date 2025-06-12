@@ -36,11 +36,16 @@ export interface AdminUser {
   email: string;
   first_name: string;
   last_name: string;
+  name: string; // ✅ Add this to prevent "user.name is undefined"
+  phone?: string;
   is_active: boolean;
   is_superuser: boolean;
   last_login?: string;
+  role?: string;
+  permissions?: string[];
   date_joined: string;
 }
+
 
 export interface FaceRecognitionResult {
   success: boolean;

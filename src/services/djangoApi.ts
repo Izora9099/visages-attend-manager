@@ -1,8 +1,7 @@
-
 // Django API service for FACE.IT application
-// This file contains all the API calls that will interact with Django backend
+// Handles all API calls to the Django backend
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 class DjangoApiService {
   private getHeaders(): HeadersInit {
@@ -13,131 +12,167 @@ class DjangoApiService {
     };
   }
 
-  // Authentication endpoints
+  private async handleResponse(response: Response) {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `API Error: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  // ============================
+  // 🔐 AUTH
+  // ============================
+
   async login(email: string, password: string) {
-    const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+    const res = await fetch(`${API_BASE_URL}/auth/login/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({ email, password }),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async logout() {
-    const response = await fetch(`${API_BASE_URL}/auth/logout/`, {
+    const res = await fetch(`${API_BASE_URL}/auth/logout/`, {
       method: 'POST',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
-  // Student management endpoints
+  // ============================
+  // 👤 STUDENTS
+  // ============================
+
   async getStudents() {
-    const response = await fetch(`${API_BASE_URL}/students/`, {
+    const res = await fetch(`${API_BASE_URL}/students/`, {
       headers: this.getHeaders(),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async createStudent(studentData: any) {
-    const response = await fetch(`${API_BASE_URL}/students/`, {
+    const res = await fetch(`${API_BASE_URL}/students/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(studentData),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async updateStudent(id: number, studentData: any) {
-    const response = await fetch(`${API_BASE_URL}/students/${id}/`, {
+    const res = await fetch(`${API_BASE_URL}/students/${id}/`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(studentData),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async deleteStudent(id: number) {
-    const response = await fetch(`${API_BASE_URL}/students/${id}/`, {
+    const res = await fetch(`${API_BASE_URL}/students/${id}/`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    return response.ok;
+    return res.ok;
   }
 
-  // Attendance endpoints
+  // ============================
+  // 📆 ATTENDANCE
+  // ============================
+
   async getAttendance(filters?: any) {
-    const queryParams = filters ? `?${new URLSearchParams(filters)}` : '';
-    const response = await fetch(`${API_BASE_URL}/attendance/${queryParams}`, {
+    const query = filters ? `?${new URLSearchParams(filters)}` : '';
+    const res = await fetch(`${API_BASE_URL}/attendance/${query}`, {
       headers: this.getHeaders(),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async markAttendance(attendanceData: any) {
-    const response = await fetch(`${API_BASE_URL}/attendance/`, {
+    const res = await fetch(`${API_BASE_URL}/attendance/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(attendanceData),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async updateAttendance(id: number, attendanceData: any) {
-    const response = await fetch(`${API_BASE_URL}/attendance/${id}/`, {
+    const res = await fetch(`${API_BASE_URL}/attendance/${id}/`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(attendanceData),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
-  // Facial recognition endpoints
+  // ============================
+  // 🧠 FACE RECOGNITION
+  // ============================
+
   async uploadFaceImage(studentId: number, imageFile: File) {
     const formData = new FormData();
     formData.append('image', imageFile);
     formData.append('student_id', studentId.toString());
 
-    const response = await fetch(`${API_BASE_URL}/face-recognition/upload/`, {
+    const res = await fetch(`${API_BASE_URL}/face-recognition/upload/`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
       },
       body: formData,
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async recognizeFace(imageFile: File) {
     const formData = new FormData();
     formData.append('image', imageFile);
 
-    const response = await fetch(`${API_BASE_URL}/face-recognition/recognize/`, {
+    const res = await fetch(`${API_BASE_URL}/face-recognition/recognize/`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
       },
       body: formData,
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
-  // Reports endpoints
+  // ============================
+  // 📄 REPORTS
+  // ============================
+
   async generateReport(reportType: string, filters: any) {
-    const response = await fetch(`${API_BASE_URL}/reports/${reportType}/`, {
+    const res = await fetch(`${API_BASE_URL}/reports/${reportType}/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(filters),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
-  // Admin users endpoints
+  // ============================
+  // 👨‍💼 ADMIN USERS
+  // ============================
+
   async getAdminUsers() {
     const response = await fetch(`${API_BASE_URL}/admin-users/`, {
       headers: this.getHeaders(),
     });
-    return response.json();
+    
+    const text = await response.text();
+    console.log("🧪 Raw response:", text);
+    
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error("❌ Failed to parse JSON:", e);
+      throw new Error("Response is not valid JSON");
+    }
+    
   }
 
   async createAdminUser(userData: any) {
@@ -150,12 +185,12 @@ class DjangoApiService {
   }
 
   async updateAdminUser(id: number, userData: any) {
-    const response = await fetch(`${API_BASE_URL}/admin-users/${id}/`, {
+    const res = await fetch(`${API_BASE_URL}/admin-users/${id}/`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(userData),
     });
-    return response.json();
+    return this.handleResponse(res);
   }
 
   async deleteAdminUser(id: number) {
