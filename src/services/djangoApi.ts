@@ -24,11 +24,11 @@ class DjangoApiService {
   // 🔐 AUTH
   // ============================
 
-  async login(email: string, password: string) {
-    const res = await fetch(`${API_BASE_URL}/auth/login/`, {
+  async login(username: string, password: string) {
+    const res = await fetch(`${API_BASE_URL}/auth/token/`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
     return this.handleResponse(res);
   }
@@ -69,6 +69,7 @@ class DjangoApiService {
     });
     return this.handleResponse(res);
   }
+  
 
   async deleteStudent(id: number) {
     const res = await fetch(`${API_BASE_URL}/students/${id}/`, {
@@ -82,13 +83,14 @@ class DjangoApiService {
   // 📆 ATTENDANCE
   // ============================
 
-  async getAttendance(filters?: any) {
-    const query = filters ? `?${new URLSearchParams(filters)}` : '';
-    const res = await fetch(`${API_BASE_URL}/attendance/${query}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
-  }
+  // GET attendance records
+async getAttendance(filters?: Record<string, any>) {
+  const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
+  const res = await fetch(`${API_BASE_URL}/attendance-records/${query}`, {
+    headers: this.getHeaders(),
+  });
+  return this.handleResponse(res);
+}
 
   async markAttendance(attendanceData: any) {
     const res = await fetch(`${API_BASE_URL}/attendance/`, {
@@ -99,14 +101,15 @@ class DjangoApiService {
     return this.handleResponse(res);
   }
 
-  async updateAttendance(id: number, attendanceData: any) {
-    const res = await fetch(`${API_BASE_URL}/attendance/${id}/`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(attendanceData),
-    });
-    return this.handleResponse(res);
-  }
+  // PUT update attendance
+async updateAttendance(id: number, data: { status?: string; check_in?: string }) {
+  const res = await fetch(`${API_BASE_URL}/attendance-records/${id}/`, {
+    method: 'PUT',
+    headers: this.getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return this.handleResponse(res);
+}
 
   // ============================
   // 🧠 FACE RECOGNITION

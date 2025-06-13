@@ -27,7 +27,7 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
       <div className="p-4 border-b border-blue-800 dark:border-gray-700">
         <div className="flex items-center justify-center">
           <img 
-            src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
+            src="/Uploads/FaceIt logo no bg.png" 
             alt="FACE.IT Logo" 
             className="w-8 h-8"
           />
