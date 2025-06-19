@@ -1,22 +1,48 @@
-
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CheckCircle, XCircle, Clock, TrendingUp, Calendar } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
-
-const attendanceData = [
-  { date: "Mon", present: 85, absent: 15 },
-  { date: "Tue", present: 92, absent: 8 },
-  { date: "Wed", present: 88, absent: 12 },
-  { date: "Thu", present: 95, absent: 5 },
-  { date: "Fri", present: 90, absent: 10 },
-];
-
-const pieData = [
-  { name: "Present", value: 85, color: "#22c55e" },
-  { name: "Absent", value: 15, color: "#ef4444" },
-];
+import { Users, CheckCircle, XCircle, TrendingUp, Calendar } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { djangoApi } from "@/services/djangoApi";
 
 export const Dashboard = () => {
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [presentToday, setPresentToday] = useState(0);
+  const [absentToday, setAbsentToday] = useState(0);
+  const [averageAttendance, setAverageAttendance] = useState(0);
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const students = await djangoApi.getStudents();
+        setTotalStudents(students.length);
+
+        const todayRecords = await djangoApi.getAttendance({ date: today });
+        setPresentToday(todayRecords.filter((r: any) => r.status === 'Present').length);
+        setAbsentToday(todayRecords.filter((r: any) => r.status === 'Absent').length);
+        setRecentActivity(todayRecords.sort((a: any, b: any) => b.check_in.localeCompare(a.check_in)).slice(0, 5));
+
+        const weekSummary = await djangoApi.getAttendanceSummary();
+        setWeeklyData(weekSummary);
+
+        const avg = weekSummary.reduce((acc, day) => acc + day.present, 0) / (weekSummary.length || 1);
+        setAverageAttendance(Math.round(avg));
+
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      }
+    };
+    fetchDashboardData();
+  }, []);
+
+  const pieData = [
+    { name: "Present", value: presentToday, color: "#22c55e" },
+    { name: "Absent", value: absentToday, color: "#ef4444" },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -27,7 +53,6 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -35,8 +60,7 @@ export const Dashboard = () => {
             <Users className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,234</div>
-            <p className="text-xs opacity-80">+12 from last month</p>
+            <div className="text-2xl font-bold">{totalStudents}</div>
           </CardContent>
         </Card>
 
@@ -46,8 +70,7 @@ export const Dashboard = () => {
             <CheckCircle className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,048</div>
-            <p className="text-xs opacity-80">85% attendance rate</p>
+            <div className="text-2xl font-bold">{presentToday}</div>
           </CardContent>
         </Card>
 
@@ -57,8 +80,7 @@ export const Dashboard = () => {
             <XCircle className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">186</div>
-            <p className="text-xs opacity-80">15% absent rate</p>
+            <div className="text-2xl font-bold">{absentToday}</div>
           </CardContent>
         </Card>
 
@@ -68,13 +90,11 @@ export const Dashboard = () => {
             <TrendingUp className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">88.5%</div>
-            <p className="text-xs opacity-80">This week</p>
+            <div className="text-2xl font-bold">{averageAttendance}%</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -82,7 +102,7 @@ export const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={attendanceData}>
+              <BarChart data={weeklyData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
@@ -122,30 +142,24 @@ export const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Recent Activity */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {[
-              { student: "John Doe", action: "Checked in", time: "09:15 AM", status: "present" },
-              { student: "Jane Smith", action: "Checked in", time: "09:12 AM", status: "present" },
-              { student: "Mike Johnson", action: "Marked absent", time: "09:00 AM", status: "absent" },
-              { student: "Sarah Wilson", action: "Checked in", time: "08:58 AM", status: "present" },
-            ].map((activity, index) => (
+            {recentActivity.map((activity, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-3">
                   <div className={`w-3 h-3 rounded-full ${
-                    activity.status === 'present' ? 'bg-green-500' : 'bg-red-500'
+                    activity.status === 'Present' ? 'bg-green-500' : 'bg-red-500'
                   }`} />
                   <div>
-                    <p className="font-medium">{activity.student}</p>
-                    <p className="text-sm text-gray-500">{activity.action}</p>
+                    <p className="font-medium">{activity.student_name}</p>
+                    <p className="text-sm text-gray-500">Status: {activity.status}</p>
                   </div>
                 </div>
-                <span className="text-sm text-gray-500">{activity.time}</span>
+                <span className="text-sm text-gray-500">{activity.check_in}</span>
               </div>
             ))}
           </div>

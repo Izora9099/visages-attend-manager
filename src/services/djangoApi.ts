@@ -111,6 +111,15 @@ async updateAttendance(id: number, data: { status?: string; check_in?: string })
   return this.handleResponse(res);
 }
 
+
+async getAttendanceSummary() {
+  const res = await fetch(`${API_BASE_URL}/attendance-summary/`, {
+    headers: this.getHeaders(),
+  });
+  return this.handleResponse(res);
+}
+
+
   // ============================
   // 🧠 FACE RECOGNITION
   // ============================
