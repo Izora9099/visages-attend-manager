@@ -1,6 +1,6 @@
-
 import { Menu, Bell, Search, User, Settings, LogOut, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,13 +10,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { djangoApi } from "@/services/djangoApi";
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
 
+interface UserInfo {
+  username: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+}
+
 export const Header = ({ onMenuClick }: HeaderProps) => {
   const [darkMode, setDarkMode] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Check if user has a saved preference
@@ -27,7 +39,53 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+
+    // Fetch current user information
+    fetchCurrentUser();
   }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      try {
+        // Try to get user info from API
+        const userData = await djangoApi.getCurrentUser();
+        setCurrentUser(userData);
+      } catch (error) {
+        console.warn('Could not fetch user info from API, using fallback');
+        
+        // Fallback: Try to decode JWT token to get user info
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          setCurrentUser({
+            username: payload.username || 'User',
+            email: payload.email || '',
+            first_name: payload.first_name || '',
+            last_name: payload.last_name || '',
+          });
+        } catch (decodeError) {
+          console.error('Could not decode token:', decodeError);
+          // Ultimate fallback
+          setCurrentUser({
+            username: 'Admin User',
+            email: '',
+            first_name: 'Admin',
+            last_name: 'User',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch current user:', error);
+      handleLogout();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleDarkMode = () => {
     const newDarkMode = !darkMode;
@@ -42,22 +100,69 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
     }
   };
 
-  // Function to handle logout - ready for Django integration
-  const handleLogout = () => {
-    // TODO: Implement Django logout API call
-    console.log('Logout clicked - integrate with Django auth');
+  const handleLogout = async () => {
+    try {
+      // Call Django logout API (will handle gracefully if endpoint doesn't exist)
+      await djangoApi.logout();
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+    } finally {
+      // Clear local storage regardless of API call success
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      
+      // Navigate to login and prevent going back
+      navigate('/login', { replace: true });
+      
+      // Clear navigation history to prevent back button access
+      window.history.replaceState(null, '', '/login');
+    }
   };
 
-  // Function to handle profile - ready for Django integration
   const handleProfile = () => {
-    // TODO: Navigate to Django profile page
-    console.log('Profile clicked - navigate to Django profile');
+    navigate('/profile');
   };
 
-  // Function to handle settings - ready for Django integration
   const handleSettings = () => {
-    // TODO: Navigate to Django settings page
     console.log('Settings clicked - navigate to Django settings');
+  };
+
+  // Get display name for user
+  const getDisplayName = () => {
+    if (!currentUser) return "Loading...";
+    
+    if (currentUser.first_name) {
+      return currentUser.first_name;
+    }
+    
+    if (currentUser.name) {
+      return currentUser.name.split(' ')[0]; // Get first part of name
+    }
+    
+    return currentUser.username;
+  };
+
+  // Get user initials for avatar
+  const getUserInitials = () => {
+    if (!currentUser) return "U";
+    
+    if (currentUser.first_name && currentUser.last_name) {
+      return `${currentUser.first_name[0]}${currentUser.last_name[0]}`.toUpperCase();
+    }
+    
+    if (currentUser.first_name) {
+      return currentUser.first_name[0].toUpperCase();
+    }
+    
+    if (currentUser.name) {
+      const nameParts = currentUser.name.split(' ');
+      if (nameParts.length > 1) {
+        return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+      }
+      return nameParts[0][0].toUpperCase();
+    }
+    
+    return currentUser.username[0].toUpperCase();
   };
 
   return (
@@ -74,12 +179,6 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
           </Button>
         
           <div className="flex items-center space-x-3">
-           { /*  <img 
-              src="/lovable-uploads/7eeb388c-1566-4e45-a879-929c5bc7b9bb.png" 
-              alt="FACE.IT Logo" 
-              className="w-8 h-8"
-            />  */
-       }
             <span className="text-xl font-bold text-blue-900 dark:text-blue-400">FACE.IT</span>
           </div>
         
@@ -88,7 +187,6 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             <Input
               placeholder="Search students, attendance..."
               className="pl-10 w-96 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-              // TODO: Implement search functionality with Django backend
             />
           </div>
         </div>
@@ -114,12 +212,24 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center space-x-2 hover:bg-gray-100 dark:hover:bg-gray-700">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <User size={16} className="text-white" />
+                  <span className="text-white text-sm font-medium">
+                    {getUserInitials()}
+                  </span>
                 </div>
-                <span className="font-medium text-gray-900 dark:text-gray-100">Admin User</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {loading ? "Loading..." : getDisplayName()}
+                </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+              {currentUser?.email && (
+                <>
+                  <div className="px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    {currentUser.email}
+                  </div>
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+                </>
+              )}
               <DropdownMenuItem 
                 onClick={handleProfile}
                 className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"

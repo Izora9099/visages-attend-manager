@@ -8,7 +8,8 @@ import { AttendanceTable } from "@/components/AttendanceTable";
 import { Reports } from "@/components/Reports";
 import { AdminUsers } from "@/components/AdminUsers";
 import { FacialRecognition } from "@/components/FacialRecognition";
-
+import { SystemSettings } from "@/components/SystemSettings";
+import { SecurityDashboard } from "@/components/SecurityDashboard";
 const Index = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -27,6 +28,10 @@ const Index = () => {
         return <Reports />;
       case "admin-users":
         return <AdminUsers />;
+      case "security":
+        return <SecurityDashboard />;
+      case "system-settings":
+        return <SystemSettings />;
       default:
         return <Dashboard />;
     }
