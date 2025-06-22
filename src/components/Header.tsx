@@ -1,6 +1,7 @@
 import { Menu, Bell, Search, User, Settings, LogOut, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { ConnectionStatus } from "./ConnectionStatus";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -255,7 +256,9 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <ConnectionStatus showDetailed={false} />
       </div>
+
     </header>
   );
 };

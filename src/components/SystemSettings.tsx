@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {ConnectionStatus} from "./ConnectionStatus";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -193,13 +194,20 @@ export const SystemSettings = () => {
   const [success, setSuccess] = useState("");
   const [testingEmail, setTestingEmail] = useState(false);
 
+  // Helper function to update settings
+  const updateSetting = (key: keyof SystemSettings, value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
   useEffect(() => {
     fetchSystemSettings();
     fetchSystemStats();
   }, []);
 
-  
-const fetchSystemSettings = async () => {
+  const fetchSystemSettings = async () => {
     setLoading(true);
     try {
       const data = await djangoApi.getSystemSettings();
@@ -1079,6 +1087,9 @@ const fetchSystemSettings = async () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="connection" className="space-y-6">
+          <ConnectionStatus showDetailed={true} />
         </TabsContent>
       </Tabs>
     </div>
