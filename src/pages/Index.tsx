@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
@@ -12,6 +11,7 @@ import { SystemSettings } from "@/components/SystemSettings";
 import { SecurityDashboard } from "@/components/SecurityDashboard";
 import { TimetableManager } from "@/components/TimetableManager";
 import { TeacherManagement } from "@/components/TeacherManagement";
+import { SuperadminTimetableManager } from "@/components/SuperadminTimetableManager";
 import { useEffect } from "react";
 import { djangoApi } from "@/services/djangoApi";
 import { UserPermissions } from "@/types/permissions";
@@ -58,11 +58,9 @@ const Index = () => {
       case "dashboard":
         return <RoleBasedDashboard userPermissions={userPermissions} />;
       case "timetable":
-        return <TimetableManager />;
+        return <SuperadminTimetableManager />;
       case "courses":
-        return <TimetableManager />;
-      case "sessions":
-        return <TimetableManager />;
+        return <SuperadminTimetableManager />;
       case "students":
         return <Students />;
       case "teachers":

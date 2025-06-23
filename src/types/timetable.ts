@@ -10,6 +10,11 @@ export interface Course {
   description?: string;
   prerequisites?: string[];
   is_active: boolean;
+  assigned_teacher?: {
+    id: number;
+    name: string;
+    email: string;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -74,4 +79,16 @@ export interface SessionInfo {
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
   attendance_count: number;
   total_enrolled: number;
+  room: Room;
+}
+
+// New interface for timetable creation
+export interface TimetableSlotEntry {
+  timeSlotId: number;
+  dayOfWeek: number;
+  entries: {
+    courseId: number;
+    teacherId: number;
+    roomId: number;
+  }[];
 }
