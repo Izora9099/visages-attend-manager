@@ -1,105 +1,84 @@
 // src/config/menuPermissions.ts
-// Menu configuration and permission definitions
+// Menu permissions configuration
 
-import { Users, ClipboardList, Camera, BarChart3, UserCog, Layout, Settings, Shield } from "lucide-react";
-import { MenuItemPermission } from '@/types/permissions';
+import { MenuItemPermission } from "@/types/permissions";
+import { 
+  Users, 
+  Calendar, 
+  BarChart3, 
+  Settings, 
+  Shield, 
+  Clock,
+  BookOpen,
+  Monitor
+} from "lucide-react";
 
+// Menu permissions configuration
 export const MENU_PERMISSIONS: MenuItemPermission[] = [
   {
     id: "dashboard",
     label: "Dashboard",
-    icon: Layout,
-    // No restrictions - everyone can access dashboard
+    icon: BarChart3,
+    requiredRole: ["Superadmin", "Teacher", "Staff"],
+  },
+  {
+    id: "timetable",
+    label: "Timetable",
+    icon: Calendar,
+    requiredRole: ["Superadmin", "Teacher"],
+  },
+  {
+    id: "courses",
+    label: "Courses",
+    icon: BookOpen,
+    requiredRole: ["Superadmin"],
+  },
+  {
+    id: "sessions",
+    label: "Live Sessions",
+    icon: Monitor,
+    requiredRole: ["Superadmin", "Teacher"],
   },
   {
     id: "students",
     label: "Students",
     icon: Users,
-    requiredPermission: ["Manage Students", "View Students"],
-    // Users with student management permissions
+    requiredRole: ["Superadmin", "Staff"],
   },
   {
     id: "attendance",
-    label: "Attendance", 
-    icon: ClipboardList,
-    requiredPermission: ["Edit Attendance", "View Attendance"],
-    // Users with attendance permissions
-  },
-  {
-    id: "facial-recognition",
-    label: "Face Recognition",
-    icon: Camera,
-    requiredRole: ["Super Admin", "Manager", "Teacher"],
-    // Specific roles only
+    label: "Attendance",
+    icon: Clock,
+    requiredRole: ["Superadmin", "Teacher", "Staff"],
   },
   {
     id: "reports",
     label: "Reports",
     icon: BarChart3,
-    requiredPermission: ["View Reports"],
-    requiredRole: ["Super Admin", "Manager"],
-    // Must have both permission AND role
+    requiredRole: ["Superadmin", "Teacher"],
   },
   {
     id: "admin-users",
     label: "Admin Users",
-    icon: UserCog,
+    icon: Shield,
     requireSuperuser: true,
-    // Only superusers
+  },
+  {
+    id: "security",
+    label: "Security",
+    icon: Shield,
+    requireSuperuser: true,
+  },
+  {
+    id: "profile",
+    label: "Profile",
+    icon: Users,
+    requiredRole: ["Superadmin", "Teacher", "Staff"],
   },
   {
     id: "system-settings",
     label: "System Settings",
     icon: Settings,
     requireSuperuser: true,
-    // Only superusers
   },
-  {
-    id: "security",
-    label: "Security",
-    icon: Shield,
-    requiredRole: ["Super Admin"],
-    requireSuperuser: true,
-    // Extra secure - only superusers with specific role
-  }
 ];
-
-// Common permission sets for easy assignment
-export const PERMISSION_SETS = {
-  TEACHER: [
-    "View Students",
-    "Edit Attendance", 
-    "View Attendance"
-  ],
-  MANAGER: [
-    "Manage Students",
-    "Edit Attendance",
-    "View Attendance", 
-    "View Reports"
-  ],
-  ADMIN: [
-    "Manage Students",
-    "Edit Attendance",
-    "View Attendance",
-    "View Reports",
-    "Manage Admin Users"
-  ],
-  SUPER_ADMIN: [
-    // Superusers get all permissions automatically
-  ]
-};
-
-// Role hierarchy for easy role checking
-export const ROLE_HIERARCHY = {
-  "Staff": 0,
-  "Teacher": 1, 
-  "Manager": 2,
-  "Admin": 3,
-  "Super Admin": 4
-};
-
-export const hasHigherRole = (userRole: string, requiredRole: string): boolean => {
-  const userLevel = ROLE_HIERARCHY[userRole as keyof typeof ROLE_HIERARCHY] || 0;
-  const requiredLevel = ROLE_HIERARCHY[requiredRole as keyof typeof ROLE_HIERARCHY] || 0;
-  return userLevel >= requiredLevel;
-};
