@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export const AttendanceTable = () => {
     try {
       await djangoApi.updateAttendance(editingId!, {
         status: editingRecord.status,
-        time_in: editingRecord.checkIn,
+        check_in: editingRecord.checkIn, // Fixed: changed from time_in to check_in
       });
       await fetchAttendance();
     } catch (err) {

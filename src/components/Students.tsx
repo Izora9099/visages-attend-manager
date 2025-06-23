@@ -1,4 +1,3 @@
-// src/components/Students.tsx
 
 import { useEffect, useState } from "react";
 import { djangoApi } from "@/services/djangoApi";
@@ -9,14 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus, Search, Filter, Edit, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { StudentEditDialog } from "./StudentEditDialog";
+import { StudentCreateDialog } from "./StudentCreateDialog";
 
 export const Students = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -25,7 +23,7 @@ export const Students = () => {
       const data = await djangoApi.getStudents();
       const withAttendance = data.map((s: any) => ({
         ...s,
-        attendance: Math.floor(Math.random() * 30) + 70, // Mock data
+        attendance: Math.floor(Math.random() * 30) + 70,
       }));
       setStudents(withAttendance);
     } catch (err) {
@@ -47,21 +45,13 @@ export const Students = () => {
       {/* Top Section */}
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
-        <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Plus size={16} className="mr-2" />
-              Add Student
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md bg-white">
-            <DialogHeader>
-              <DialogTitle>Add New Student</DialogTitle>
-            </DialogHeader>
-            {/* You can insert form here later */}
-            <p>Form goes here</p>
-          </DialogContent>
-        </Dialog>
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700"
+          onClick={() => setIsAddStudentOpen(true)}
+        >
+          <Plus size={16} className="mr-2" />
+          Add Student
+        </Button>
       </div>
 
       {/* Search Filter */}
@@ -148,13 +138,20 @@ export const Students = () => {
         ))}
       </div>
 
-      {/* ✅ Student Edit Dialog */}
+      {/* Student Create Dialog */}
+      <StudentCreateDialog
+        isOpen={isAddStudentOpen}
+        onClose={() => setIsAddStudentOpen(false)}
+        onSave={fetchStudents}
+      />
+
+      {/* Student Edit Dialog */}
       {editingStudent && (
         <StudentEditDialog
           student={editingStudent}
-          open={isEditOpen}
+          isOpen={isEditOpen} // Fixed: changed from 'open' to 'isOpen'
           onClose={() => setIsEditOpen(false)}
-          onSave={fetchStudents} // ✅ Correct prop name
+          onSave={fetchStudents}
         />
       )}
     </div>

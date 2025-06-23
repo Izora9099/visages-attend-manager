@@ -1,3 +1,4 @@
+
 // src/config/menuPermissions.ts
 // Menu permissions configuration
 
@@ -10,7 +11,8 @@ import {
   Shield, 
   Clock,
   BookOpen,
-  Monitor
+  Monitor,
+  UserCheck
 } from "lucide-react";
 
 // Menu permissions configuration
@@ -38,6 +40,12 @@ export const MENU_PERMISSIONS: MenuItemPermission[] = [
     label: "Live Sessions",
     icon: Monitor,
     requiredRole: ["Superadmin", "Teacher"],
+  },
+  {
+    id: "teachers",
+    label: "Teachers",
+    icon: UserCheck,
+    requiredRole: ["Superadmin"],
   },
   {
     id: "students",
