@@ -1,43 +1,48 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Calendar, Users, BookOpen, Clock } from 'lucide-react';
-import { TimetableGrid } from './TimetableGrid';
-import { CourseManager } from './CourseManager';
+import { Plus, Calendar, Clock, Eye, CalendarPlus } from 'lucide-react';
+import { TimetableCreationGrid } from './TimetableCreationGrid';
+import { TimetableView } from './TimetableView';
 import { SessionMonitor } from './SessionMonitor';
 import { timetableApi } from '@/services/timetableApi';
 import { Course, TimetableEntry, SessionInfo } from '@/types/timetable';
+import { useAuth } from '@/hooks/useAuth';
+import { TeacherTimetableView } from './TeacherTimetableView';
+import { ROLES } from '@/constants/roles';
 
 export const TimetableManager = () => {
+  const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
   const [currentSessions, setCurrentSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [coursesData, entriesData, sessionsData] = await Promise.all([
-          timetableApi.getCourses(),
-          timetableApi.getTimetableEntries(),
-          timetableApi.getCurrentSessions()
-        ]);
-        
-        setCourses(coursesData);
-        setTimetableEntries(entriesData);
-        setCurrentSessions(sessionsData);
-      } catch (error) {
-        console.error('Failed to fetch timetable data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    fetchTimetableData();
   }, []);
 
+  const fetchTimetableData = async () => {
+    try {
+      const [entriesData] = await Promise.all([
+        timetableApi.getTimetableEntries(),
+      ]);
+      
+      setTimetableEntries(entriesData);
+    } catch (error) {
+      console.error('Failed to fetch timetable data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // If user is a teacher, show the read-only view
+  if (user?.role === ROLES.TEACHER) {
+    return <TeacherTimetableView />;
+  }
+
+  // For admins and staff, show the full management interface
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -65,71 +70,30 @@ export const TimetableManager = () => {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{courses.length}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{currentSessions.filter(s => s.status === 'active').length}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Scheduled Today</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{currentSessions.length}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {currentSessions.reduce((acc, session) => acc + session.total_enrolled, 0)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="schedule" className="space-y-4">
+      <Tabs defaultValue="view" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="schedule">Schedule View</TabsTrigger>
-          <TabsTrigger value="courses">Course Management</TabsTrigger>
-          <TabsTrigger value="sessions">Live Sessions</TabsTrigger>
+          <TabsTrigger value="view">
+            <Eye className="h-4 w-4 mr-2" />
+            View Timetable
+          </TabsTrigger>
+          <TabsTrigger value="create">
+            <CalendarPlus className="h-4 w-4 mr-2" />
+            Create/Edit
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="schedule" className="space-y-4">
-          <TimetableGrid entries={timetableEntries} />
+        <TabsContent value="view" className="space-y-4">
+          <TimetableView entries={timetableEntries} />
         </TabsContent>
-
-        <TabsContent value="courses" className="space-y-4">
-          <CourseManager courses={courses} setCourses={setCourses} />
-        </TabsContent>
-
-        <TabsContent value="sessions" className="space-y-4">
-          <SessionMonitor sessions={currentSessions} />
+        <TabsContent value="create" className="space-y-4">
+          <TimetableCreationGrid onUpdate={fetchTimetableData} />
         </TabsContent>
       </Tabs>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4">Current Sessions</h2>
+        <SessionMonitor sessions={currentSessions} />
+      </div>
     </div>
   );
 };

@@ -7,6 +7,7 @@ import { djangoApi } from "@/services/djangoApi";
 import { PermissionChecker } from "@/utils/permissionChecker";
 import { MENU_PERMISSIONS } from "@/config/menuPermissions";
 import { UserPermissions, MenuItemPermission } from "@/types/permissions";
+import { ROLES } from "@/constants/roles";
 
 interface SidebarProps {
   activeTab: string;
@@ -26,9 +27,16 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
 
   useEffect(() => {
     if (currentUser) {
-      filterMenuItems();
+      const filteredItems = filterMenuItems();
+      setVisibleMenuItems(filteredItems);
+      
+      // If current tab is not in visible items, switch to first available tab
+      if (filteredItems.length > 0 && !filteredItems.some(item => item.id === activeTab)) {
+        setActiveTab(filteredItems[0].id);
+      }
     }
-  }, [currentUser]);
+    setLoading(false);
+  }, [currentUser, activeTab, setActiveTab]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -76,17 +84,43 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
   };
 
   const filterMenuItems = () => {
+    console.log('Filtering menu items...');
+    console.log('Current User:', currentUser);
+    
     if (!currentUser) {
-      setVisibleMenuItems([]);
-      return;
+      console.log('No current user, returning empty menu');
+      return [];
     }
-
+    
+    // If user is superuser, return all menu items
+    if (currentUser.is_superuser) {
+      console.log('User is superuser, returning all menu items');
+      return MENU_PERMISSIONS;
+    }
+    
+    console.log('Checking permissions for user with role:', currentUser.role);
     const permissionChecker = new PermissionChecker(currentUser);
-    const filtered = MENU_PERMISSIONS.filter(item => 
-      permissionChecker.canAccessMenuItem(item)
-    );
-
-    setVisibleMenuItems(filtered);
+    
+    const filteredItems = MENU_PERMISSIONS.filter(item => {
+      // If no required role, show to all authenticated users
+      if (!item.requiredRole || item.requiredRole.length === 0) {
+        console.log(`Item ${item.id}: No role required, showing`);
+        return true;
+      }
+      
+      // Check if user has any of the required roles
+      const hasRole = item.requiredRole.some(role => {
+        const has = permissionChecker.hasRole(role);
+        console.log(`Item ${item.id}: Checking role ${role}: ${has}`);
+        return has;
+      });
+      
+      console.log(`Item ${item.id}: Final access: ${hasRole}`);
+      return hasRole;
+    });
+    
+    console.log('Final filtered items:', filteredItems.map(i => i.id));
+    return filteredItems;
   };
 
   if (loading) {

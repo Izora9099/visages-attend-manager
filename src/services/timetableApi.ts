@@ -1,4 +1,3 @@
-
 // Timetable API service with dummy data
 import { Course, TimeSlot, Room, TimetableEntry, AcademicLevel, SessionInfo } from '@/types/timetable';
 
@@ -157,11 +156,12 @@ export const timetableApi = {
     return DUMMY_LEVELS;
   },
 
-  // Timetable Entries
-  getTimetableEntries: async (): Promise<TimetableEntry[]> => {
+  /**
+   * Get timetable entries with optional filters
+   */
+  async getTimetableEntries(filters: { teacher_id?: number } = {}) {
     await new Promise(resolve => setTimeout(resolve, 500));
-    // Generate some dummy timetable entries
-    return [
+    const timetableEntries = [
       {
         id: 1,
         course: DUMMY_COURSES[0],
@@ -174,6 +174,12 @@ export const timetableApi = {
         updated_at: '2024-01-01T00:00:00Z'
       }
     ];
+
+    if (filters.teacher_id) {
+      return timetableEntries.filter(entry => entry.teacher.id === filters.teacher_id);
+    }
+
+    return timetableEntries;
   },
 
   createTimetableEntry: async (entry: Omit<TimetableEntry, 'id' | 'created_at' | 'updated_at'>): Promise<TimetableEntry> => {

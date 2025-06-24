@@ -1,5 +1,5 @@
-
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { djangoApi } from "@/services/djangoApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,14 +10,23 @@ import { Plus, Search, Filter, Edit, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StudentEditDialog } from "./StudentEditDialog";
 import { StudentCreateDialog } from "./StudentCreateDialog";
+import { TeacherStudentView } from "./TeacherStudentView";
+import { ROLES } from "@/constants/roles";
 
 export const Students = () => {
+  const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
+  // If user is a teacher, render the teacher's view
+  if (user.role === ROLES.TEACHER) {
+    return <TeacherStudentView />;
+  }
+
+  // Original admin/staff view
   const fetchStudents = async () => {
     try {
       const data = await djangoApi.getStudents();
@@ -149,7 +158,7 @@ export const Students = () => {
       {editingStudent && (
         <StudentEditDialog
           student={editingStudent}
-          isOpen={isEditOpen} // Fixed: changed from 'open' to 'isOpen'
+          isOpen={isEditOpen} 
           onClose={() => setIsEditOpen(false)}
           onSave={fetchStudents}
         />

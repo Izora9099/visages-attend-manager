@@ -1,4 +1,4 @@
-// types/permissions.ts - Create this file for type safety
+// types/permissions.ts
 
 export interface UserPermissions {
     id: number;
@@ -7,9 +7,10 @@ export interface UserPermissions {
     is_staff?: boolean;
     role?: string;
     permissions?: string[];
-  }
-  
-  export interface MenuItemPermission {
+    assigned_courses?: number[]; // IDs of courses assigned to the teacher
+}
+
+export interface MenuItemPermission {
     id: string;
     label: string;
     icon: any;
@@ -17,4 +18,6 @@ export interface UserPermissions {
     requiredPermission?: string[];
     requireSuperuser?: boolean;
     requireStaff?: boolean;
-  }
+    viewOnly?: boolean; // If true, the menu item is read-only
+    requiresCourseFilter?: boolean; // If true, requires course filtering
+}

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
-import { djangoApi } from '@/services/djangoApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LocationState {
   from?: {
@@ -21,33 +21,21 @@ export function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { login, isAuthenticated } = useAuth();
 
   const from = (location.state as LocationState)?.from?.pathname || '/';
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      // Verify token is still valid
-      djangoApi.getCurrentUser()
-        .then(() => {
-          navigate(from, { replace: true });
-        })
-        .catch(() => {
-          // Token is invalid, clear it
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-        });
+    // If already authenticated, redirect to the target page
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
     }
-
-    // Clear browser history to prevent back navigation
-    window.history.replaceState(null, '', '/login');
-  }, [navigate, from]);
+  }, [isAuthenticated, navigate, from]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!username.trim() || !password.trim()) {
+    if (!username.trim() || !password) {
       setError('Please enter both username and password');
       return;
     }
@@ -56,15 +44,8 @@ export function Login() {
     setError('');
 
     try {
-      const response = await djangoApi.login(username, password);
-      
-      // Store tokens
-      localStorage.setItem('access_token', response.access);
-      localStorage.setItem('refresh_token', response.refresh);
-      
-      // Navigate to the page user was trying to access, or dashboard
-      navigate(from, { replace: true });
-      
+      await login(username, password);
+      // The AuthContext will handle the navigation after successful login
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed. Please check your credentials.');
@@ -82,7 +63,6 @@ export function Login() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg">
-        {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center space-x-2 mb-4">
             <span className="text-2xl font-bold text-blue-900">FACE.IT</span>
@@ -91,7 +71,6 @@ export function Login() {
           <p className="text-gray-600">Sign in to your account</p>
         </div>
 
-        {/* Error Alert */}
         {error && (
           <Alert className="border-red-200 bg-red-50">
             <AlertDescription className="text-red-700">
@@ -100,7 +79,6 @@ export function Login() {
           </Alert>
         )}
 
-        {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username" className="text-sm font-medium text-gray-700">
@@ -169,7 +147,6 @@ export function Login() {
           </Button>
         </form>
 
-        {/* Footer */}
         <div className="text-center text-sm text-gray-500">
           <p>Secure attendance management system</p>
         </div>

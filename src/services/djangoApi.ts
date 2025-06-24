@@ -5,6 +5,11 @@ import { getApiBaseUrl, apiConfig } from '@/config/api';
 class DjangoApiService {
   private apiBaseUrl: string | null = null;
   private initializationPromise: Promise<void> | null = null;
+  private defaults: { headers: { common: { [key: string]: string } } } = {
+    headers: {
+      common: {},
+    },
+  };
 
   /**
    * Initialize the API service with auto-detected URL
@@ -153,11 +158,143 @@ class DjangoApiService {
     return retryableErrors.some(keyword => errorMessage.includes(keyword));
   }
 
+  /**
+   * Set the authentication token for API requests
+   */
+  setAuthToken(token: string | null) {
+    if (token) {
+      this.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      localStorage.setItem('access_token', token);
+    } else {
+      delete this.defaults.headers.common['Authorization'];
+      localStorage.removeItem('access_token');
+    }
+  }
+
+  /**
+   * Login with username and password
+   */
+  async login(username: string, password: string) {
+    try {
+      const apiUrl = await this.getApiUrl();
+      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
+      const loginUrl = `${baseUrl}auth/token/`;
+      
+      console.log('API Base URL:', apiUrl);
+      console.log('Attempting login to:', loginUrl);
+      
+      const response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          username, 
+          password,
+        }),
+      });
+
+      const responseData = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        console.error('Login failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: responseData,
+          url: loginUrl,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(
+          responseData.detail || 
+          responseData.message || 
+          'Login failed. Please check your credentials.'
+        );
+      }
+
+      console.log('Login successful, tokens received');
+      return { data: responseData };
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  }
+
+  async getCurrentUser() {
+    try {
+      const apiUrl = await this.getApiUrl();
+      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
+      const userUrl = `${baseUrl}auth/user/`;
+      
+      console.log('Fetching current user from:', userUrl);
+      
+      const response = await fetch(userUrl, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        console.error('Failed to fetch current user:', {
+          status: response.status,
+          statusText: response.statusText,
+          error,
+          url: userUrl,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(error.detail || 'Failed to fetch current user');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      throw error;
+    }
+  }
+
+  async logout() {
+    try {
+      const apiUrl = await this.getApiUrl();
+      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
+      const logoutUrl = `${baseUrl}auth/logout/`;
+      
+      console.log('Logging out from:', logoutUrl);
+      
+      const response = await fetch(logoutUrl, {
+        method: 'POST',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        console.error('Logout failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error,
+          url: logoutUrl,
+        });
+        // Even if logout fails on the server, we still want to clear local state
+      }
+
+      // Clear tokens regardless of server response
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      delete this.defaults.headers.common['Authorization'];
+      
+      return true;
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Still clear tokens even if there's an error
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      delete this.defaults.headers.common['Authorization'];
+      return false;
+    }
+  }
+
   // ============================
   // 🔐 AUTH
   // ============================
 
-  async login(username: string, password: string) {
+  async loginWithToken(username: string, password: string) {
     const data = await this.makeRequest('/auth/token/', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
@@ -171,7 +308,7 @@ class DjangoApiService {
     return data;
   }
 
-  async logout() {
+  async logoutWithToken() {
     try {
       const refreshToken = localStorage.getItem('refresh_token');
       
@@ -187,7 +324,7 @@ class DjangoApiService {
     }
   }
 
-  async getCurrentUser() {
+  async getCurrentUserWithToken() {
     try {
       const data = await this.makeRequest('/auth/user/');
       

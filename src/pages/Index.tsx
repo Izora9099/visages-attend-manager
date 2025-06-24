@@ -11,7 +11,7 @@ import { SystemSettings } from "@/components/SystemSettings";
 import { SecurityDashboard } from "@/components/SecurityDashboard";
 import { TimetableManager } from "@/components/TimetableManager";
 import { TeacherManagement } from "@/components/TeacherManagement";
-import { SuperadminTimetableManager } from "@/components/SuperadminTimetableManager";
+import { CourseManagement } from "@/components/CourseManagement";
 import { useEffect } from "react";
 import { djangoApi } from "@/services/djangoApi";
 import { UserPermissions } from "@/types/permissions";
@@ -47,8 +47,8 @@ const Index = () => {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-            <p>Loading...</p>
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="mt-2 text-sm text-gray-600">Loading...</p>
           </div>
         </div>
       );
@@ -58,9 +58,9 @@ const Index = () => {
       case "dashboard":
         return <RoleBasedDashboard userPermissions={userPermissions} />;
       case "timetable":
-        return <SuperadminTimetableManager />;
+        return <TimetableManager />;
       case "courses":
-        return <SuperadminTimetableManager />;
+        return <CourseManagement />;
       case "students":
         return <Students />;
       case "teachers":

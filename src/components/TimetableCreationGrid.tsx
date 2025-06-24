@@ -1,159 +1,262 @@
-
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Plus } from 'lucide-react';
-import { TimetableEntry, Course } from '@/types/timetable';
-import { TimetableSlotDialog } from './TimetableSlotDialog';
-import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, Plus, Trash2, Save } from 'lucide-react';
+import { timetableApi } from '@/services/timetableApi';
+import { TimetableEntry } from '@/types/timetable';
 
 interface TimetableCreationGridProps {
-  entries: TimetableEntry[];
-  courses: Course[];
   onUpdate: () => void;
 }
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const TIME_SLOTS = [
-  { start: '08:00', end: '10:00', label: '8:00 AM - 10:00 AM' },
-  { start: '10:30', end: '12:30', label: '10:30 AM - 12:30 PM' },
-  { start: '14:00', end: '16:00', label: '2:00 PM - 4:00 PM' },
-  { start: '16:30', end: '18:30', label: '4:30 PM - 6:30 PM' },
+const DAYS_OF_WEEK = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ];
 
-export const TimetableCreationGrid = ({ entries, courses, onUpdate }: TimetableCreationGridProps) => {
-  const [selectedSlot, setSelectedSlot] = useState<{day: number, timeSlot: string} | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+export const TimetableCreationGrid = ({ onUpdate }: TimetableCreationGridProps) => {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [classrooms, setClassrooms] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [entries, setEntries] = useState<Partial<TimetableEntry>[]>([]);
+  const [newEntry, setNewEntry] = useState<Partial<TimetableEntry>>({
+    dayOfWeek: 'Monday',
+    startTime: '09:00',
+    endTime: '10:00'
+  });
 
-  const getEntriesForSlot = (dayIndex: number, timeSlot: string) => {
-    return entries.filter(entry => 
-      entry.timeslot.day_of_week === dayIndex && 
-      entry.timeslot.start_time === timeSlot.split(' - ')[0]
-    );
-  };
-
-  const handleSlotClick = (dayIndex: number, timeSlot: string) => {
-    setSelectedSlot({ day: dayIndex, timeSlot });
-    setIsDialogOpen(true);
-  };
-
-  const getDepartmentColor = (department: string) => {
-    const colors = {
-      'Computer Science': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Mathematics': 'bg-green-100 text-green-800 border-green-200',
-      'Physics': 'bg-purple-100 text-purple-800 border-purple-200',
-      'Chemistry': 'bg-orange-100 text-orange-800 border-orange-200',
-      'Biology': 'bg-pink-100 text-pink-800 border-pink-200',
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [coursesData, teachersData, classroomsData] = await Promise.all([
+          timetableApi.getCourses(),
+          timetableApi.getTeachers(),
+          timetableApi.getClassrooms()
+        ]);
+        
+        setCourses(coursesData);
+        setTeachers(teachersData);
+        setClassrooms(classroomsData);
+        
+        // Load existing entries
+        const entriesData = await timetableApi.getTimetableEntries();
+        setEntries(entriesData);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    return colors[department as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
+
+    fetchData();
+  }, []);
+
+  const handleAddEntry = () => {
+    setEntries([...entries, newEntry]);
+    setNewEntry({
+      dayOfWeek: 'Monday',
+      startTime: '09:00',
+      endTime: '10:00'
+    });
   };
+
+  const handleUpdateEntry = (index: number, field: string, value: any) => {
+    const updatedEntries = [...entries];
+    updatedEntries[index] = { ...updatedEntries[index], [field]: value };
+    setEntries(updatedEntries);
+  };
+
+  const handleRemoveEntry = (index: number) => {
+    const updatedEntries = entries.filter((_, i) => i !== index);
+    setEntries(updatedEntries);
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      // Here you would typically send the entries to your API
+      // For now, we'll just log them
+      console.log('Saving entries:', entries);
+      
+      // Call the onUpdate callback to refresh the parent component
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to save timetable:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading data...</span>
+      </div>
+    );
+  }
 
   return (
-    <>
+    <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Weekly Timetable - Click any slot to add courses</CardTitle>
+          <CardTitle>Add New Timetable Entry</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <div className="grid grid-cols-7 gap-2 min-w-[900px]">
-              {/* Header Row */}
-              <div className="p-2 font-semibold text-center bg-gray-50 rounded">Time</div>
-              {DAYS.map((day) => (
-                <div key={day} className="p-2 font-semibold text-center bg-gray-50 rounded">
-                  {day}
-                </div>
-              ))}
-
-              {/* Time Slot Rows */}
-              {TIME_SLOTS.map((timeSlot) => (
-                <>
-                  {/* Time Label */}
-                  <div key={`time-${timeSlot.start}`} className="p-2 text-sm text-gray-600 bg-gray-50 rounded flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="font-medium">{timeSlot.start}</div>
-                      <div className="text-xs text-gray-500">{timeSlot.end}</div>
-                    </div>
-                  </div>
-
-                  {/* Day Columns */}
-                  {DAYS.map((day, dayIndex) => {
-                    const slotEntries = getEntriesForSlot(dayIndex, timeSlot.label);
-                    
-                    return (
-                      <div
-                        key={`${day}-${timeSlot.start}`}
-                        className={cn(
-                          "p-2 min-h-[120px] border-2 border-dashed border-gray-200 rounded cursor-pointer transition-all hover:border-gray-400 hover:bg-gray-50",
-                          slotEntries.length > 0 && "border-solid border-blue-300 bg-blue-50"
-                        )}
-                        onClick={() => handleSlotClick(dayIndex, timeSlot.start)}
-                      >
-                        {slotEntries.length > 0 ? (
-                          <div className="space-y-2">
-                            {slotEntries.map((entry, index) => (
-                              <div
-                                key={index}
-                                className={cn(
-                                  "p-2 rounded border text-xs",
-                                  getDepartmentColor(entry.course.department)
-                                )}
-                              >
-                                <div className="font-semibold">{entry.course.code}</div>
-                                <div className="truncate">{entry.course.name}</div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                  {entry.teacher.name}
-                                </div>
-                                <div className="text-xs text-gray-600">
-                                  {entry.room.name}
-                                </div>
-                                <Badge variant="outline" className="text-xs mt-1">
-                                  Level {entry.course.level}
-                                </Badge>
-                              </div>
-                            ))}
-                            <Button size="sm" variant="ghost" className="w-full">
-                              <Plus className="h-3 w-3 mr-1" />
-                              Add More
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="h-full flex flex-col items-center justify-center text-gray-400 text-sm">
-                            <Plus className="h-4 w-4 mb-1" />
-                            <span>Add Course</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              ))}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label>Course</Label>
+              <Select 
+                value={newEntry.courseId as string || ''}
+                onValueChange={(value) => setNewEntry({...newEntry, courseId: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select course" />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.map((course) => (
+                    <SelectItem key={course.id} value={course.id}>
+                      {course.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label>Teacher</Label>
+              <Select
+                value={newEntry.teacherId as string || ''}
+                onValueChange={(value) => setNewEntry({...newEntry, teacherId: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select teacher" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers.map((teacher) => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      {teacher.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label>Day</Label>
+              <Select
+                value={newEntry.dayOfWeek || 'Monday'}
+                onValueChange={(value) => setNewEntry({...newEntry, dayOfWeek: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DAYS_OF_WEEK.map((day) => (
+                    <SelectItem key={day} value={day}>
+                      {day}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex space-x-2">
+              <div className="flex-1">
+                <Label>Start Time</Label>
+                <Input 
+                  type="time" 
+                  value={newEntry.startTime}
+                  onChange={(e) => setNewEntry({...newEntry, startTime: e.target.value})}
+                />
+              </div>
+              <div className="flex-1">
+                <Label>End Time</Label>
+                <Input 
+                  type="time" 
+                  value={newEntry.endTime}
+                  onChange={(e) => setNewEntry({...newEntry, endTime: e.target.value})}
+                />
+              </div>
             </div>
           </div>
-
-          {/* Legend */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="text-sm text-gray-600 mr-2">Departments:</span>
-            {['Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Biology'].map(dept => (
-              <Badge key={dept} variant="outline" className={getDepartmentColor(dept)}>
-                {dept}
-              </Badge>
-            ))}
+          
+          <div className="mt-4">
+            <Button onClick={handleAddEntry}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Entry
+            </Button>
           </div>
         </CardContent>
       </Card>
-
-      {selectedSlot && (
-        <TimetableSlotDialog
-          isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
-          selectedSlot={selectedSlot}
-          existingEntries={getEntriesForSlot(selectedSlot.day, selectedSlot.timeSlot)}
-          courses={courses}
-          onUpdate={onUpdate}
-        />
-      )}
-    </>
+      
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-medium">Timetable Entries</h3>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save All Changes
+              </>
+            )}
+          </Button>
+        </div>
+        
+        {entries.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No timetable entries yet. Add one above to get started.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {entries.map((entry, index) => (
+              <Card key={index}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="grid grid-cols-4 gap-4 flex-1">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {courses.find(c => c.id === entry.courseId)?.name || 'No course selected'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {classrooms.find(c => c.id === entry.classroomId)?.name || 'No classroom'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm">
+                          {teachers.find(t => t.id === entry.teacherId)?.name || 'No teacher'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm">{entry.dayOfWeek}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {entry.startTime} - {entry.endTime}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveEntry(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
