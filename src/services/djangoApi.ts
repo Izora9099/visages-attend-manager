@@ -1,4 +1,4 @@
-// src/services/djangoApi.ts - Optimized version with failure reporting
+// src/services/djangoApi.ts - Updated to match Django URL patterns
 
 import { getApiBaseUrl, apiConfig } from '@/config/api';
 
@@ -171,14 +171,17 @@ class DjangoApiService {
     }
   }
 
+  // ============================
+  // 🔐 AUTHENTICATION (Updated to match Django URLs)
+  // ============================
+
   /**
-   * Login with username and password
+   * Login with username and password - Updated to use Django's auth/login/ endpoint
    */
   async login(username: string, password: string) {
     try {
       const apiUrl = await this.getApiUrl();
-      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
-      const loginUrl = `${baseUrl}auth/token/`;
+      const loginUrl = `${apiUrl}/auth/login/`;
       
       console.log('API Base URL:', apiUrl);
       console.log('Attempting login to:', loginUrl);
@@ -219,83 +222,11 @@ class DjangoApiService {
     }
   }
 
-  async getCurrentUser() {
-    try {
-      const apiUrl = await this.getApiUrl();
-      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
-      const userUrl = `${baseUrl}auth/user/`;
-      
-      console.log('Fetching current user from:', userUrl);
-      
-      const response = await fetch(userUrl, {
-        headers: this.getHeaders(),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        console.error('Failed to fetch current user:', {
-          status: response.status,
-          statusText: response.statusText,
-          error,
-          url: userUrl,
-          headers: Object.fromEntries(response.headers.entries())
-        });
-        throw new Error(error.detail || 'Failed to fetch current user');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching current user:', error);
-      throw error;
-    }
-  }
-
-  async logout() {
-    try {
-      const apiUrl = await this.getApiUrl();
-      const baseUrl = apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`;
-      const logoutUrl = `${baseUrl}auth/logout/`;
-      
-      console.log('Logging out from:', logoutUrl);
-      
-      const response = await fetch(logoutUrl, {
-        method: 'POST',
-        headers: this.getHeaders(),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        console.error('Logout failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          error,
-          url: logoutUrl,
-        });
-        // Even if logout fails on the server, we still want to clear local state
-      }
-
-      // Clear tokens regardless of server response
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      delete this.defaults.headers.common['Authorization'];
-      
-      return true;
-    } catch (error) {
-      console.error('Error during logout:', error);
-      // Still clear tokens even if there's an error
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      delete this.defaults.headers.common['Authorization'];
-      return false;
-    }
-  }
-
-  // ============================
-  // 🔐 AUTH
-  // ============================
-
+  /**
+   * Token-based login - Updated to use Django's auth/login/ endpoint
+   */
   async loginWithToken(username: string, password: string) {
-    const data = await this.makeRequest('/auth/token/', {
+    const data = await this.makeRequest('/auth/login/', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     });
@@ -308,32 +239,13 @@ class DjangoApiService {
     return data;
   }
 
-  async logoutWithToken() {
+  /**
+   * Get current user - Note: Django doesn't have this endpoint by default
+   * You'll need to create a view for this or use the token refresh endpoint
+   */
+  async getCurrentUser() {
     try {
-      const refreshToken = localStorage.getItem('refresh_token');
-      
-      const data = await this.makeRequest('/auth/logout/', {
-        method: 'POST',
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      }, false); // Don't retry logout requests
-      
-      return data;
-    } catch (error) {
-      console.warn('Logout API call failed, but continuing with local logout:', error);
-      return { success: true, message: 'Logged out locally' };
-    }
-  }
-
-  async getCurrentUserWithToken() {
-    try {
-      const data = await this.makeRequest('/auth/user/');
-      
-      // Store user data for future use
-      localStorage.setItem('user_data', JSON.stringify(data));
-      
-      return data;
-    } catch (error) {
-      // Fallback: try to get user data from localStorage
+      // Try to get user data from stored token or localStorage
       const storedUserData = localStorage.getItem('user_data');
       if (storedUserData) {
         try {
@@ -343,7 +255,7 @@ class DjangoApiService {
         }
       }
       
-      // Ultimate fallback: decode JWT token
+      // Fallback: decode JWT token if available
       const token = localStorage.getItem('access_token');
       if (token) {
         try {
@@ -354,27 +266,58 @@ class DjangoApiService {
             email: payload.email || '',
             first_name: payload.first_name || '',
             last_name: payload.last_name || '',
-            name: payload.name || 'Admin User',
+            name: payload.name || 'User',
           };
         } catch (e) {
           console.error('Failed to decode token:', e);
         }
       }
       
+      throw new Error('No user data available');
+    } catch (error) {
+      console.error('Error fetching current user:', error);
       throw error;
     }
   }
 
+  async getCurrentUserWithToken() {
+    return this.getCurrentUser();
+  }
+
+  /**
+   * Logout - Updated for Django pattern
+   */
+  async logout() {
+    try {
+      // Clear tokens regardless of server response
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_data');
+      delete this.defaults.headers.common['Authorization'];
+      
+      return true;
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Still clear tokens even if there's an error
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_data');
+      delete this.defaults.headers.common['Authorization'];
+      return false;
+    }
+  }
+
+  async logoutWithToken() {
+    return this.logout();
+  }
+
   async updateCurrentUserProfile(updateData: any) {
-    const data = await this.makeRequest('/auth/user/', {
-      method: 'PUT',
-      body: JSON.stringify(updateData),
-    });
-    
-    // Update stored user data
-    localStorage.setItem('user_data', JSON.stringify(data));
-    
-    return data;
+    // Since there's no user update endpoint in your Django config,
+    // we'll store it locally for now
+    const currentData = await this.getCurrentUser();
+    const updatedData = { ...currentData, ...updateData };
+    localStorage.setItem('user_data', JSON.stringify(updatedData));
+    return updatedData;
   }
 
   async refreshToken() {
@@ -383,14 +326,14 @@ class DjangoApiService {
       throw new Error('No refresh token available');
     }
 
-    return this.makeRequest('/auth/token/refresh/', {
+    return this.makeRequest('/auth/refresh/', {
       method: 'POST',
       body: JSON.stringify({ refresh: refreshToken }),
     });
   }
 
   // ============================
-  // 👤 STUDENTS
+  // 👤 STUDENTS (Updated to match Django ViewSet patterns)
   // ============================
 
   async getStudents() {
@@ -421,12 +364,12 @@ class DjangoApiService {
   }
 
   // ============================
-  // 📆 ATTENDANCE
+  // 📆 ATTENDANCE (Updated to match Django ViewSet patterns)
   // ============================
 
   async getAttendance(filters?: Record<string, any>) {
     const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/attendance-records/${query}`);
+    return this.makeRequest(`/attendance/${query}`);
   }
 
   async markAttendance(attendanceData: any) {
@@ -437,18 +380,19 @@ class DjangoApiService {
   }
 
   async updateAttendance(id: number, data: { status?: string; check_in?: string }) {
-    return this.makeRequest(`/attendance-records/${id}/`, {
+    return this.makeRequest(`/attendance/${id}/`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async getAttendanceSummary() {
-    return this.makeRequest('/attendance-summary/');
+    // Using the legacy endpoint that exists in your Django URLs
+    return this.makeRequest('/get-attendance/');
   }
 
   // ============================
-  // 🧠 FACE RECOGNITION
+  // 🧠 FACE RECOGNITION (Updated to match Django patterns)
   // ============================
 
   async uploadFaceImage(studentId: number, imageFile: File) {
@@ -457,7 +401,7 @@ class DjangoApiService {
     formData.append('image', imageFile);
     formData.append('student_id', studentId.toString());
 
-    const response = await fetch(`${apiUrl}/face-recognition/upload/`, {
+    const response = await fetch(`${apiUrl}/register-student/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
@@ -465,7 +409,7 @@ class DjangoApiService {
       body: formData,
     });
     
-    return this.handleResponse(response, '/face-recognition/upload/');
+    return this.handleResponse(response, '/register-student/');
   }
 
   async recognizeFace(imageFile: File) {
@@ -473,7 +417,7 @@ class DjangoApiService {
     const formData = new FormData();
     formData.append('image', imageFile);
 
-    const response = await fetch(`${apiUrl}/face-recognition/recognize/`, {
+    const response = await fetch(`${apiUrl}/recognize-face/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
@@ -481,45 +425,135 @@ class DjangoApiService {
       body: formData,
     });
     
-    return this.handleResponse(response, '/face-recognition/recognize/');
+    return this.handleResponse(response, '/recognize-face/');
   }
 
   // ============================
-  // 📄 REPORTS
+  // 📊 DASHBOARD & ANALYTICS (Updated to match Django patterns)
   // ============================
 
-  async generateReport(reportType: string, filters: any) {
-    return this.makeRequest(`/reports/${reportType}/`, {
+  async getDashboardStats() {
+    return this.makeRequest('/dashboard/stats/');
+  }
+
+  async getDepartmentStats() {
+    return this.makeRequest('/analytics/departments/');
+  }
+
+  async getCourseStats() {
+    return this.makeRequest('/analytics/courses/');
+  }
+
+  async getTeacherStats() {
+    return this.makeRequest('/analytics/teachers/');
+  }
+
+  // ============================
+  // 🏛️ ACADEMIC STRUCTURE (Updated to match Django ViewSet patterns)
+  // ============================
+
+  async getDepartments() {
+    return this.makeRequest('/departments/');
+  }
+
+  async createDepartment(departmentData: any) {
+    return this.makeRequest('/departments/', {
       method: 'POST',
-      body: JSON.stringify(filters),
+      body: JSON.stringify(departmentData),
     });
   }
 
-  // ============================
-  // 👨‍💼 ADMIN USERS
-  // ============================
-
-  async getAdminUsers() {
-    return this.makeRequest('/admin-users/');
-  }
-
-  async createAdminUser(userData: any) {
-    return this.makeRequest('/admin-users/', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-  }
-
-  async updateAdminUser(id: number, userData: any) {
-    return this.makeRequest(`/admin-users/${id}/`, {
+  async updateDepartment(id: number, departmentData: any) {
+    return this.makeRequest(`/departments/${id}/`, {
       method: 'PUT',
-      body: JSON.stringify(userData),
+      body: JSON.stringify(departmentData),
     });
   }
 
-  async deleteAdminUser(id: number) {
+  async deleteDepartment(id: number) {
     const apiUrl = await this.getApiUrl();
-    const response = await fetch(`${apiUrl}/admin-users/${id}/`, {
+    const response = await fetch(`${apiUrl}/departments/${id}/`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.ok;
+  }
+
+  async getSpecializations() {
+    return this.makeRequest('/specializations/');
+  }
+
+  async createSpecialization(specializationData: any) {
+    return this.makeRequest('/specializations/', {
+      method: 'POST',
+      body: JSON.stringify(specializationData),
+    });
+  }
+
+  async updateSpecialization(id: number, specializationData: any) {
+    return this.makeRequest(`/specializations/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(specializationData),
+    });
+  }
+
+  async deleteSpecialization(id: number) {
+    const apiUrl = await this.getApiUrl();
+    const response = await fetch(`${apiUrl}/specializations/${id}/`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.ok;
+  }
+
+  async getLevels() {
+    return this.makeRequest('/levels/');
+  }
+
+  async createLevel(levelData: any) {
+    return this.makeRequest('/levels/', {
+      method: 'POST',
+      body: JSON.stringify(levelData),
+    });
+  }
+
+  async updateLevel(id: number, levelData: any) {
+    return this.makeRequest(`/levels/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(levelData),
+    });
+  }
+
+  async deleteLevel(id: number) {
+    const apiUrl = await this.getApiUrl();
+    const response = await fetch(`${apiUrl}/levels/${id}/`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.ok;
+  }
+
+  async getCourses() {
+    return this.makeRequest('/courses/');
+  }
+
+  async createCourse(courseData: any) {
+    return this.makeRequest('/courses/', {
+      method: 'POST',
+      body: JSON.stringify(courseData),
+    });
+  }
+
+  async updateCourse(id: number, courseData: any) {
+    return this.makeRequest(`/courses/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(courseData),
+    });
+  }
+
+  async deleteCourse(id: number) {
+    const apiUrl = await this.getApiUrl();
+    const response = await fetch(`${apiUrl}/courses/${id}/`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -527,34 +561,159 @@ class DjangoApiService {
   }
 
   // ============================
-  // 🛡️ SECURITY DASHBOARD
+  // 📄 REPORTS
+  // ============================
+
+  async generateReport(reportType: string, filters: any) {
+    // This would need to be implemented in Django
+    return this.makeRequest(`/reports/${reportType}/`, {
+      method: 'POST',
+      body: JSON.stringify(filters),
+    });
+  }
+
+  // ============================
+  // ⚙️ SYSTEM (Updated to match Django patterns)
+  // ============================
+
+  async getSystemStats() {
+    return this.makeRequest('/system/stats/');
+  }
+
+  async getSystemHealth() {
+    // Since this endpoint doesn't exist in Django, we'll use system stats as a health check
+    return this.makeRequest('/system/stats/');
+  }
+
+  async getSystemSettings() {
+    // This would need to be implemented in Django
+    return this.makeRequest('/system/settings/');
+  }
+
+  async updateSystemSettings(settings: any) {
+    // This would need to be implemented in Django
+    return this.makeRequest('/system/settings/', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async testEmailSettings() {
+    // This would need to be implemented in Django
+    return this.makeRequest('/system/email/test/', {
+      method: 'POST',
+    });
+  }
+
+  async createBackup() {
+    // This would need to be implemented in Django
+    return this.makeRequest('/system/backup/create/', {
+      method: 'POST',
+    });
+  }
+
+  // ============================
+  // 📱 SESSION MANAGEMENT (Updated to match Django patterns)
+  // ============================
+
+  async startAttendanceSession(sessionData: any) {
+    return this.makeRequest('/sessions/start/', {
+      method: 'POST',
+      body: JSON.stringify(sessionData),
+    });
+  }
+
+  async endAttendanceSession(sessionData: any) {
+    return this.makeRequest('/sessions/end/', {
+      method: 'POST',
+      body: JSON.stringify(sessionData),
+    });
+  }
+
+  async sessionBasedAttendance(attendanceData: any) {
+    return this.makeRequest('/attendance/checkin/', {
+      method: 'POST',
+      body: JSON.stringify(attendanceData),
+    });
+  }
+
+  async getSessionStats(sessionId: string) {
+    return this.makeRequest(`/sessions/${sessionId}/stats/`);
+  }
+
+  // ============================
+  // 📊 ENROLLMENT MANAGEMENT (Updated to match Django patterns)
+  // ============================
+
+  async manageStudentEnrollment(enrollmentData: any) {
+    return this.makeRequest('/enrollment/student/', {
+      method: 'POST',
+      body: JSON.stringify(enrollmentData),
+    });
+  }
+
+  async bulkEnrollment(bulkData: any) {
+    return this.makeRequest('/enrollment/bulk/', {
+      method: 'POST',
+      body: JSON.stringify(bulkData),
+    });
+  }
+
+  // ============================
+  // 🚀 QUICK ACCESS (Updated to match Django patterns)
+  // ============================
+
+  async getQuickDepartments() {
+    return this.makeRequest('/quick/departments/');
+  }
+
+  async getQuickSpecializations() {
+    return this.makeRequest('/quick/specializations/');
+  }
+
+  async getQuickLevels() {
+    return this.makeRequest('/quick/levels/');
+  }
+
+  async getQuickCourses() {
+    return this.makeRequest('/quick/courses/');
+  }
+
+  // ============================
+  // 🛡️ SECURITY DASHBOARD (Placeholder - would need Django implementation)
   // ============================
 
   async getUserActivities(filters?: Record<string, any>) {
     const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
+    // This would need to be implemented in Django
     return this.makeRequest(`/security/user-activities/${query}`);
   }
 
   async getLoginAttempts(filters?: Record<string, any>) {
     const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
+    // This would need to be implemented in Django
     return this.makeRequest(`/security/login-attempts/${query}`);
   }
 
   async getActiveSessions() {
+    // This would need to be implemented in Django
     return this.makeRequest('/security/active-sessions/');
   }
 
   async terminateSession(sessionId: string) {
+    // This would need to be implemented in Django
     return this.makeRequest(`/security/terminate-session/${sessionId}/`, {
       method: 'DELETE',
     });
   }
 
   async getSecuritySettings() {
+    // This would need to be implemented in Django
     return this.makeRequest('/security/settings/');
   }
 
   async updateSecuritySettings(settings: any) {
+    // This would need to be implemented in Django
     return this.makeRequest('/security/settings/update/', {
       method: 'POST',
       body: JSON.stringify(settings),
@@ -565,6 +724,7 @@ class DjangoApiService {
     const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
     const apiUrl = await this.getApiUrl();
     
+    // This would need to be implemented in Django
     const response = await fetch(`${apiUrl}/security/export/activity-log/${query}`, {
       headers: this.getHeaders(),
     });
@@ -578,42 +738,43 @@ class DjangoApiService {
 
   async getSecurityStatistics(filters?: Record<string, any>) {
     const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
+    // This would need to be implemented in Django
     return this.makeRequest(`/security/statistics/${query}`);
   }
 
   // ============================
-  // ⚙️ SYSTEM SETTINGS
+  // 👨‍💼 ADMIN USERS (Placeholder - would need Django implementation)
   // ============================
 
-  async getSystemSettings() {
-    return this.makeRequest('/api/system/settings/');
+  async getAdminUsers() {
+    // This would need to be implemented in Django
+    return this.makeRequest('/admin-users/');
   }
 
-  async updateSystemSettings(settings: any) {
-    return this.makeRequest('/api/system/settings/update/', {
+  async createAdminUser(userData: any) {
+    // This would need to be implemented in Django
+    return this.makeRequest('/admin-users/', {
       method: 'POST',
-      body: JSON.stringify(settings),
+      body: JSON.stringify(userData),
     });
   }
 
-  async getSystemStats() {
-    return this.makeRequest('/api/system/stats/');
-  }
-
-  async testEmailSettings() {
-    return this.makeRequest('/api/system/email/test/', {
-      method: 'POST',
+  async updateAdminUser(id: number, userData: any) {
+    // This would need to be implemented in Django
+    return this.makeRequest(`/admin-users/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
     });
   }
 
-  async createBackup() {
-    return this.makeRequest('/api/system/backup/create/', {
-      method: 'POST',
+  async deleteAdminUser(id: number) {
+    const apiUrl = await this.getApiUrl();
+    // This would need to be implemented in Django
+    const response = await fetch(`${apiUrl}/admin-users/${id}/`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
     });
-  }
-
-  async getSystemHealth() {
-    return this.makeRequest('/api/system/health/');
+    return response.ok;
   }
 
   // ============================
@@ -649,7 +810,7 @@ class DjangoApiService {
   async isConnected(): Promise<boolean> {
     try {
       // ✅ Use a lightweight endpoint check
-      await this.getSystemHealth();
+      await this.getSystemStats();
       return true;
     } catch (error) {
       return false;
