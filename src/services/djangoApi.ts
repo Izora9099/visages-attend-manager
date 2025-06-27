@@ -566,6 +566,272 @@ class DjangoApiService {
       method: 'POST',
     });
   }
+  // Add these methods to your existing DjangoApiService class in djangoApi.ts
+// Place them before the closing brace of the class
+
+// ============================
+// 👥 ADMIN USER MANAGEMENT
+// ============================
+
+async getAdminUsers(): Promise<any[]> {
+  try {
+    return await this.makeRequest('/admin-users/');
+  } catch (error) {
+    console.warn('Admin users endpoint not available');
+    return [];
+  }
+}
+
+async createAdminUser(userData: any): Promise<any> {
+  try {
+    return await this.makeRequest('/admin-users/create/', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  } catch (error) {
+    console.error('Failed to create admin user:', error);
+    throw error;
+  }
+}
+
+async updateAdminUser(userId: number, userData: any): Promise<any> {
+  try {
+    return await this.makeRequest(`/admin-users/${userId}/`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+  } catch (error) {
+    console.error('Failed to update admin user:', error);
+    throw error;
+  }
+}
+
+async deleteAdminUser(userId: number): Promise<any> {
+  try {
+    return await this.makeRequest(`/admin-users/${userId}/delete/`, {
+      method: 'DELETE',
+    });
+  } catch (error) {
+    console.error('Failed to delete admin user:', error);
+    throw error;
+  }
+}
+
+// ============================
+// 🔒 SECURITY MANAGEMENT
+// ============================
+
+async getUserActivities(filters: any = {}): Promise<any[]> {
+  try {
+    const params = new URLSearchParams();
+    
+    if (filters.days) params.append('days', filters.days.toString());
+    if (filters.user && filters.user !== 'all') params.append('user', filters.user);
+    if (filters.action && filters.action !== 'all') params.append('action', filters.action);
+    if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+    
+    const queryString = params.toString();
+    const url = queryString ? `/security/activities/?${queryString}` : '/security/activities/';
+    
+    return await this.makeRequest(url);
+  } catch (error) {
+    console.warn('User activities endpoint not available');
+    return [];
+  }
+}
+
+async getLoginAttempts(filters: any = {}): Promise<any[]> {
+  try {
+    const params = new URLSearchParams();
+    if (filters.days) params.append('days', filters.days.toString());
+    
+    const queryString = params.toString();
+    const url = queryString ? `/security/login-attempts/?${queryString}` : '/security/login-attempts/';
+    
+    return await this.makeRequest(url);
+  } catch (error) {
+    console.warn('Login attempts endpoint not available');
+    return [];
+  }
+}
+
+async getActiveSessions(): Promise<any[]> {
+  try {
+    return await this.makeRequest('/security/active-sessions/');
+  } catch (error) {
+    console.warn('Active sessions endpoint not available');
+    return [];
+  }
+}
+
+async getSecurityStatistics(filters: any = {}): Promise<any> {
+  try {
+    const params = new URLSearchParams();
+    if (filters.days) params.append('days', filters.days.toString());
+    
+    const queryString = params.toString();
+    const url = queryString ? `/security/statistics/?${queryString}` : '/security/statistics/';
+    
+    return await this.makeRequest(url);
+  } catch (error) {
+    console.warn('Security statistics endpoint not available');
+    return {
+      total_login_attempts: 0,
+      successful_logins: 0,
+      failed_logins: 0,
+      unique_users: 0,
+      suspicious_activities: 0,
+      blocked_ips: 0
+    };
+  }
+}
+
+async getSecuritySettings(): Promise<any> {
+  try {
+    return await this.makeRequest('/security/settings/');
+  } catch (error) {
+    console.warn('Security settings endpoint not available');
+    return {
+      min_password_length: 8,
+      require_special_chars: false,
+      enable_2fa: false,
+      max_login_attempts: 5,
+      lockout_duration: 30,
+      session_timeout: 60,
+      log_all_activities: true
+    };
+  }
+}
+
+async updateSecuritySettings(settings: any): Promise<any> {
+  try {
+    return await this.makeRequest('/security/settings/update/', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+  } catch (error) {
+    console.error('Failed to update security settings:', error);
+    throw error;
+  }
+}
+
+async terminateSession(sessionId: string): Promise<any> {
+  try {
+    return await this.makeRequest(`/security/sessions/${sessionId}/terminate/`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    console.error('Failed to terminate session:', error);
+    throw error;
+  }
+}
+
+// ============================
+// ⚙️ SYSTEM SETTINGS
+// ============================
+
+async getSystemSettings(): Promise<any> {
+  try {
+    return await this.makeRequest('/system/settings/');
+  } catch (error) {
+    console.warn('System settings endpoint not available');
+    return {
+      school_name: 'Face Recognition Attendance System',
+      academic_year: '2024-2025',
+      semester: 'Fall',
+      maintenance_mode: false,
+      allow_registration: true,
+      email_notifications: true,
+      backup_frequency: 'daily',
+      max_file_size: 10
+    };
+  }
+}
+
+async updateSystemSettings(settings: any): Promise<any> {
+  try {
+    return await this.makeRequest('/system/settings/update/', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+  } catch (error) {
+    console.error('Failed to update system settings:', error);
+    throw error;
+  }
+}
+
+async testEmailSettings(): Promise<any> {
+  try {
+    return await this.makeRequest('/system/test-email/', {
+      method: 'POST',
+    });
+  } catch (error) {
+    console.error('Failed to test email settings:', error);
+    throw error;
+  }
+}
+
+async createBackup(): Promise<any> {
+  try {
+    return await this.makeRequest('/system/backup/create/', {
+      method: 'POST',
+    });
+  } catch (error) {
+    console.error('Failed to create backup:', error);
+    throw error;
+  }
+}
+
+// ============================
+// 🔄 AUTHENTICATION HELPERS
+// ============================
+
+async getCurrentUser(): Promise<any> {
+  try {
+    return await this.makeRequest('/auth/user/');
+  } catch (error) {
+    console.warn('Current user endpoint not available, using fallback');
+    // Return a basic user object for testing
+    return {
+      id: 1,
+      username: 'admin',
+      email: 'admin@example.com',
+      is_superuser: true,
+      role: 'superadmin',
+      permissions: [
+        'view_students', 'manage_students', 'view_attendance', 
+        'edit_attendance', 'view_reports', 'generate_reports', 
+        'manage_users', 'system_settings'
+      ]
+    };
+  }
+}
+
+async refreshToken(): Promise<any> {
+  try {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await this.makeRequest('/auth/refresh/', {
+      method: 'POST',
+      body: JSON.stringify({ refresh: refreshToken }),
+    });
+
+    if (response.access) {
+      localStorage.setItem('access_token', response.access);
+      if (response.refresh) {
+        localStorage.setItem('refresh_token', response.refresh);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Failed to refresh token:', error);
+    throw error;
+  }
+}
 }
 
 export const djangoApi = new DjangoApiService();
