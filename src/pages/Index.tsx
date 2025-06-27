@@ -1,4 +1,6 @@
-import { useState } from "react";
+// src/pages/Index.tsx - Fixed layout to prevent header overlap
+
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { RoleBasedDashboard } from "@/components/RoleBasedDashboard";
@@ -12,7 +14,6 @@ import { SecurityDashboard } from "@/components/SecurityDashboard";
 import { TimetableManager } from "@/components/TimetableManager";
 import { TeacherManagement } from "@/components/TeacherManagement";
 import { CourseManagement } from "@/components/CourseManagement";
-import { useEffect } from "react";
 import { djangoApi } from "@/services/djangoApi";
 import { UserPermissions } from "@/types/permissions";
 
@@ -36,7 +37,7 @@ const Index = () => {
         id: 0,
         username: 'User',
         is_superuser: false,
-        role: 'Staff',
+        role: 'staff',
         permissions: [],
       });
     }
@@ -83,16 +84,22 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex w-full transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      {/* Sidebar - Fixed positioning */}
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
+      
+      {/* Main content area - Positioned to the right of sidebar */}
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
+        {/* Header - Should not be fixed/sticky when sidebar is fixed */}
         <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 p-6">
+        
+        {/* Main content */}
+        <main className="p-6">
           {renderContent()}
         </main>
       </div>

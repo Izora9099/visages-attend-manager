@@ -1,162 +1,226 @@
-import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ROLES } from '@/constants/roles';
-import { djangoApi } from '@/services/djangoApi';
+// src/contexts/AuthContext.tsx - Backward compatible version
 
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  is_superuser: boolean;
-  first_name?: string;
-  last_name?: string;
-}
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { djangoApi } from '@/services/djangoApi';
+import { UserPermissions } from '@/types/permissions';
 
 interface AuthContextType {
-  user: User | null;
+  user: UserPermissions | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  hasRole: (role: string) => boolean;
+  logout: () => void;
+  refreshAuth: () => Promise<void>;
+  hasRole?: (role: string) => boolean; // Optional for backward compatibility
 }
 
+// Export AuthContext for components that import it directly
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<UserPermissions | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Check if user is already logged in on initial load
+  const isAuthenticated = !!user && !!localStorage.getItem('access_token');
+
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const accessToken = localStorage.getItem('access_token');
-        if (accessToken) {
-          // Set the token in the API client
-          djangoApi.setAuthToken(accessToken);
-          
-          // Fetch current user
-          const userData = await djangoApi.getCurrentUser();
-          
-          // Ensure superuser has the correct role
-          const userRole = userData.is_superuser ? ROLES.SUPER_ADMIN : userData.role;
-          
-          setUser({
-            id: userData.id,
-            username: userData.username,
-            email: userData.email,
-            role: userRole,
-            is_superuser: userData.is_superuser,
-            first_name: userData.first_name,
-            last_name: userData.last_name,
-          });
-        } else {
-          // If no token, ensure user is null and redirect to login
-          setUser(null);
-          if (window.location.pathname !== '/login') {
-            navigate('/login', { replace: true });
-          }
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        // Clear all auth tokens on failure
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user_data');
-        delete djangoApi.defaults.headers.common['Authorization'];
-        setUser(null);
-        if (window.location.pathname !== '/login') {
-          navigate('/login', { replace: true });
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    initializeAuth();
+  }, []);
 
-    checkAuth();
-  }, [navigate]);
-
-  const login = async (username: string, password: string) => {
+  const initializeAuth = async () => {
     try {
-      const response = await djangoApi.login(username, password);
-      const { access, refresh, user: userData } = response.data;
-      
-      // Ensure superuser has the correct role
-      const userRole = userData.is_superuser ? ROLES.SUPER_ADMIN : userData.role;
-      
-      // Store tokens
-      localStorage.setItem('access_token', access);
-      if (refresh) {
-        localStorage.setItem('refresh_token', refresh);
+      const token = localStorage.getItem('access_token');
+      const refreshToken = localStorage.getItem('refresh_token');
+
+      if (!token) {
+        setIsLoading(false);
+        return;
       }
-      djangoApi.setAuthToken(access);
-      
-      const user = {
-        id: userData.id,
-        username: userData.username,
-        email: userData.email,
-        role: userRole,
-        is_superuser: userData.is_superuser,
-        first_name: userData.first_name,
-        last_name: userData.last_name,
-      };
-      
-      setUser(user);
-      
-      // Store user data in localStorage for quick access
-      localStorage.setItem('user_data', JSON.stringify(user));
-      
-      // Redirect to home
-      navigate('/', { replace: true });
+
+      // Try to get current user info
+      try {
+        const userData = await djangoApi.getCurrentUser();
+        setUser(userData);
+      } catch (error: any) {
+        console.warn('Failed to get user data:', error);
+        
+        // If we have a refresh token, try to refresh
+        if (refreshToken && error.message?.includes('Authentication')) {
+          try {
+            await djangoApi.refreshToken();
+            const userData = await djangoApi.getCurrentUser();
+            setUser(userData);
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            logout();
+          }
+        } else {
+          logout();
+        }
+      }
     } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
+      console.error('Auth initialization failed:', error);
+      logout();
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const logout = async () => {
+  const login = async (username: string, password: string): Promise<void> => {
     try {
-      // Call logout API if needed
-      await djangoApi.logout();
-    } catch (error) {
-      console.error('Logout API error:', error);
-      // Continue with client-side cleanup even if API call fails
-    } finally {
-      // Clear all auth data
+      setIsLoading(true);
+
+      // Authenticate with Django
+      const response = await djangoApi.login(username, password);
+      
+      if (!response.access) {
+        throw new Error('Invalid response from server');
+      }
+
+      console.log('Login response:', response);
+
+      // Store tokens immediately
+      localStorage.setItem('access_token', response.access);
+      if (response.refresh) {
+        localStorage.setItem('refresh_token', response.refresh);
+      }
+
+      // Get user data after successful login
+      let userData: UserPermissions;
+      try {
+        userData = await djangoApi.getCurrentUser();
+        console.log('User data from getCurrentUser:', userData);
+      } catch (userError) {
+        console.warn('Could not fetch user data after login, using login response:', userError);
+        
+        // Try to extract user info from login response
+        if (response.user) {
+          userData = {
+            id: response.user.id || 1,
+            username: response.user.username || username,
+            email: response.user.email || '',
+            first_name: response.user.first_name || '',
+            last_name: response.user.last_name || '',
+            name: response.user.name || '',
+            phone: response.user.phone || '',
+            is_active: response.user.is_active !== undefined ? response.user.is_active : true,
+            is_staff: response.user.is_staff !== undefined ? response.user.is_staff : false,
+            is_superuser: response.user.is_superuser || false,
+            role: response.user.is_superuser ? 'superadmin' : (response.user.role || 'staff'),
+            permissions: response.user.permissions || []
+          };
+        } else {
+          // Decode token to get user info
+          try {
+            const payload = JSON.parse(atob(response.access.split('.')[1]));
+            userData = {
+              id: payload.user_id || 1,
+              username: payload.username || username,
+              email: payload.email || '',
+              first_name: payload.first_name || '',
+              last_name: payload.last_name || '',
+              name: payload.name || '',
+              phone: payload.phone || '',
+              is_active: true,
+              is_staff: payload.is_staff || false,
+              is_superuser: payload.is_superuser || false,
+              role: payload.is_superuser ? 'superadmin' : (payload.role || 'staff'),
+              permissions: payload.permissions || []
+            };
+          } catch (decodeError) {
+            console.error('Could not decode token:', decodeError);
+            // Final fallback
+            userData = {
+              id: 1,
+              username: username,
+              email: '',
+              first_name: '',
+              last_name: '',
+              name: '',
+              phone: '',
+              is_active: true,
+              is_staff: true,
+              is_superuser: true,
+              role: 'superadmin',
+              permissions: []
+            };
+          }
+        }
+      }
+
+      // Store user data
+      localStorage.setItem('user_data', JSON.stringify(userData));
+      setUser(userData);
+
+      // Navigate to dashboard
+      navigate('/', { replace: true });
+      
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      
+      // Clear any stored tokens on login failure
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user_data');
-      delete djangoApi.defaults.headers.common['Authorization'];
       
-      // Clear user state
-      setUser(null);
-      
-      // Navigate to login with replace to prevent going back
-      navigate('/login', { replace: true });
+      throw new Error(error.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const logout = () => {
+    // Clear tokens and user data
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    setUser(null);
+    
+    // Navigate to login page
+    navigate('/login', { replace: true });
+  };
+
+  const refreshAuth = async (): Promise<void> => {
+    try {
+      await djangoApi.refreshToken();
+      const userData = await djangoApi.getCurrentUser();
+      setUser(userData);
+    } catch (error) {
+      console.error('Auth refresh failed:', error);
+      logout();
+    }
+  };
+
+  // Backward compatibility function
   const hasRole = (role: string): boolean => {
     if (!user) return false;
     if (user.is_superuser) return true;
     return user.role === role;
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
-    isAuthenticated: !!user,
+    isAuthenticated,
     isLoading,
     login,
     logout,
-    hasRole,
+    refreshAuth,
+    hasRole, // Add this for backward compatibility
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
+// Export useAuth hook for components that import it from this file
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

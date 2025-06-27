@@ -1,3 +1,5 @@
+// src/hooks/useAuth.ts - Updated to work with new AuthContext
+
 import { useContext } from 'react';
 import { AuthContext } from '@/contexts/AuthContext';
 

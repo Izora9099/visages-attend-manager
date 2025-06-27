@@ -1,127 +1,155 @@
+// src/components/RoleBasedDashboard.tsx - Updated to work with Django API
 
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { 
+  Users, 
+  BookOpen, 
+  Calendar, 
+  TrendingUp, 
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  GraduationCap,
+  Building2
+} from "lucide-react";
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line
+} from "recharts";
+
 import { djangoApi } from '@/services/djangoApi';
-import { PermissionChecker } from '@/utils/permissionChecker';
-import { UserPermissions } from '@/types/permissions';
-import { Users, BookOpen, Calendar, Clock, TrendingUp, AlertCircle } from 'lucide-react';
+import { UserPermissions, DashboardStats, DepartmentStats, CourseStats, TeacherStats } from '@/types';
+
+interface PermissionChecker {
+  hasRole: (role: string | string[]) => boolean;
+  hasPermission: (permission: string) => boolean;
+}
 
 interface RoleBasedDashboardProps {
   userPermissions: UserPermissions;
 }
 
-export const RoleBasedDashboard = ({ userPermissions }: RoleBasedDashboardProps) => {
-  const [dashboardData, setDashboardData] = useState<any>(null);
+export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPermissions }) => {
+  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
+  const [departmentStats, setDepartmentStats] = useState<DepartmentStats[]>([]);
+  const [courseStats, setCourseStats] = useState<CourseStats[]>([]);
+  const [teacherStats, setTeacherStats] = useState<TeacherStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const permissionChecker = new PermissionChecker(userPermissions);
+  const permissionChecker: PermissionChecker = {
+    hasRole: (role: string | string[]) => {
+      if (Array.isArray(role)) {
+        return role.includes(userPermissions.role);
+      }
+      return userPermissions.role === role;
+    },
+    hasPermission: (permission: string) => {
+      return userPermissions.is_superuser || userPermissions.permissions.includes(permission);
+    }
+  };
 
   useEffect(() => {
-    fetchDashboardData();
+    loadDashboardData();
   }, [userPermissions]);
 
-  const fetchDashboardData = async () => {
+  const loadDashboardData = async () => {
     try {
-      // Fetch role-specific dashboard data
-      const data = await getDashboardDataByRole();
-      setDashboardData(data);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      setLoading(true);
+      setError(null);
+
+      // Load basic dashboard stats
+      const statsPromise = djangoApi.getDashboardStats().catch(err => {
+        console.warn('Dashboard stats not available:', err);
+        return {
+          total_students: 0,
+          total_courses: 0,
+          total_departments: 0,
+          total_teachers: 0,
+          active_sessions: 0,
+          total_attendance_records: 0,
+          todays_attendance_count: 0,
+          todays_attendance_rate: 0,
+          weekly_attendance_trend: [],
+          recent_activities: []
+        };
+      });
+
+      const promises = [statsPromise];
+
+      // Load additional stats based on role
+      if (permissionChecker.hasRole(['superadmin', 'staff'])) {
+        promises.push(
+          djangoApi.getDepartmentStats().catch(() => []),
+          djangoApi.getCourseStats().catch(() => []),
+          djangoApi.getTeacherStats().catch(() => [])
+        );
+      }
+
+      const results = await Promise.all(promises);
+      
+      setDashboardData(results[0]);
+      if (results.length > 1) {
+        setDepartmentStats(results[1]);
+        setCourseStats(results[2]);
+        setTeacherStats(results[3]);
+      }
+
+    } catch (err: any) {
+      console.error('Failed to load dashboard data:', err);
+      setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
-  };
-
-  const getDashboardDataByRole = async () => {
-    if (permissionChecker.hasRole('Superadmin')) {
-      return getSuperadminDashboardData();
-    } else if (permissionChecker.hasRole('Teacher')) {
-      return getTeacherDashboardData();
-    } else if (permissionChecker.hasRole('Staff')) {
-      return getStaffDashboardData();
-    }
-    return getDefaultDashboardData();
-  };
-
-  const getSuperadminDashboardData = () => {
-    // Mock data for Superadmin
-    return {
-      totalStudents: 1250,
-      totalTeachers: 45,
-      totalCourses: 120,
-      activeSessions: 8,
-      todayAttendance: 89,
-      systemHealth: 'Good',
-      recentActivities: [
-        { action: 'New student registered', time: '5 minutes ago', user: 'Staff01' },
-        { action: 'Course CSC301 updated', time: '15 minutes ago', user: 'Dr. Smith' },
-        { action: 'Attendance session started', time: '30 minutes ago', user: 'Prof. Johnson' },
-      ]
-    };
-  };
-
-  const getTeacherDashboardData = () => {
-    // Mock data for Teacher (scoped to their courses)
-    return {
-      myCourses: ['CSC101', 'CSC201', 'CSC301'],
-      todaySessions: 2,
-      totalStudentsInMyCourses: 150,
-      averageAttendance: 85,
-      nextSession: {
-        course: 'CSC101',
-        time: '2:00 PM',
-        room: 'Lab A101'
-      },
-      recentSessions: [
-        { course: 'CSC101', date: 'Today', attendance: '45/50', status: 'Completed' },
-        { course: 'CSC201', date: 'Yesterday', attendance: '38/42', status: 'Completed' },
-      ]
-    };
-  };
-
-  const getStaffDashboardData = () => {
-    // Mock data for Staff
-    return {
-      newRegistrations: 12,
-      pendingEnrollments: 5,
-      enrollmentRequests: 8,
-      totalActiveStudents: 1180,
-      recentRegistrations: [
-        { name: 'John Doe', level: '100', date: 'Today' },
-        { name: 'Jane Smith', level: '200', date: 'Yesterday' },
-      ]
-    };
-  };
-
-  const getDefaultDashboardData = () => {
-    return {
-      message: 'Welcome to FACE.IT'
-    };
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <Clock className="h-8 w-8 animate-spin mx-auto mb-2" />
-          <p>Loading dashboard...</p>
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <Alert className="border-red-200 bg-red-50">
+        <AlertCircle className="h-4 w-4 text-red-600" />
+        <AlertDescription className="text-red-700">
+          {error}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   // Superadmin Dashboard
-  if (permissionChecker.hasRole('Superadmin')) {
+  if (permissionChecker.hasRole('superadmin')) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900">System Overview</h1>
-          <Badge variant="outline" className="text-green-600 border-green-600">
-            System Health: {dashboardData.systemHealth}
+          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+            System Administrator
           </Badge>
         </div>
 
+        {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -129,56 +157,123 @@ export const RoleBasedDashboard = ({ userPermissions }: RoleBasedDashboardProps)
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.totalStudents}</div>
+              <div className="text-2xl font-bold">{dashboardData?.total_students || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.total_courses || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Departments</CardTitle>
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.total_departments || 0}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Teachers</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
+              <GraduationCap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.totalTeachers}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.totalCourses}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.activeSessions}</div>
+              <div className="text-2xl font-bold">{dashboardData?.total_teachers || 0}</div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Today's Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Today's Attendance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-green-600">
+                {dashboardData?.todays_attendance_rate?.toFixed(1) || 0}%
+              </div>
+              <p className="text-sm text-gray-600">
+                {dashboardData?.todays_attendance_count || 0} students checked in
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-blue-600">
+                {dashboardData?.active_sessions || 0}
+              </div>
+              <p className="text-sm text-gray-600">Currently running</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Records</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-purple-600">
+                {dashboardData?.total_attendance_records || 0}
+              </div>
+              <p className="text-sm text-gray-600">Attendance records</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Department Performance */}
+        {departmentStats.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Department Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={departmentStats}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="department_name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="total_students" fill="#3b82f6" name="Students" />
+                  <Bar dataKey="total_courses" fill="#10b981" name="Courses" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Recent Activities */}
         <Card>
           <CardHeader>
             <CardTitle>Recent System Activities</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {dashboardData.recentActivities.map((activity: any, index: number) => (
-                <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <div>
-                    <p className="font-medium">{activity.action}</p>
-                    <p className="text-sm text-gray-500">by {activity.user}</p>
+              {dashboardData?.recent_activities?.length > 0 ? (
+                dashboardData.recent_activities.map((activity: any, index: number) => (
+                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                    <div>
+                      <p className="font-medium">{activity.action || 'System Activity'}</p>
+                      <p className="text-sm text-gray-500">by {activity.user || 'System'}</p>
+                    </div>
+                    <span className="text-sm text-gray-400">{activity.time || 'Recently'}</span>
                   </div>
-                  <span className="text-sm text-gray-400">{activity.time}</span>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">No recent activities</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -186,109 +281,14 @@ export const RoleBasedDashboard = ({ userPermissions }: RoleBasedDashboardProps)
     );
   }
 
-  // Teacher Dashboard
-  if (permissionChecker.hasRole('Teacher')) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">My Teaching Dashboard</h1>
-          <Badge variant="outline">
-            {dashboardData.myCourses.length} Assigned Courses
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">My Students</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.totalStudentsInMyCourses}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today's Sessions</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.todaySessions}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Attendance</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.averageAttendance}%</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">My Courses</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.myCourses.length}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Next Session</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="p-4 bg-blue-50 rounded">
-                <h3 className="font-medium">{dashboardData.nextSession.course}</h3>
-                <p className="text-sm text-gray-600">Time: {dashboardData.nextSession.time}</p>
-                <p className="text-sm text-gray-600">Room: {dashboardData.nextSession.room}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Sessions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {dashboardData.recentSessions.map((session: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium">{session.course}</p>
-                      <p className="text-sm text-gray-500">{session.date}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{session.attendance}</p>
-                      <Badge variant="outline" className="text-xs">
-                        {session.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   // Staff Dashboard
-  if (permissionChecker.hasRole('Staff')) {
+  if (permissionChecker.hasRole('staff')) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900">Student Management Dashboard</h1>
-          <Badge variant="outline">
-            {dashboardData.pendingEnrollments} Pending Tasks
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            Staff Member
           </Badge>
         </div>
 
@@ -299,68 +299,190 @@ export const RoleBasedDashboard = ({ userPermissions }: RoleBasedDashboardProps)
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData.totalActiveStudents}</div>
+              <div className="text-2xl font-bold">{dashboardData?.total_students || 0}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">New Registrations</CardTitle>
-              <Users className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-sm font-medium">Available Courses</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{dashboardData.newRegistrations}</div>
+              <div className="text-2xl font-bold">{dashboardData?.total_courses || 0}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Enrollments</CardTitle>
+              <CardTitle className="text-sm font-medium">Today's Attendance</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {dashboardData?.todays_attendance_rate?.toFixed(1) || 0}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
               <AlertCircle className="h-4 w-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{dashboardData.pendingEnrollments}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Enrollment Requests</CardTitle>
-              <BookOpen className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{dashboardData.enrollmentRequests}</div>
+              <div className="text-2xl font-bold text-yellow-600">0</div>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Student Registrations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {dashboardData.recentRegistrations.map((registration: any, index: number) => (
-                <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <div>
-                    <p className="font-medium">{registration.name}</p>
-                    <p className="text-sm text-gray-500">Level {registration.level}</p>
-                  </div>
-                  <span className="text-sm text-gray-400">{registration.date}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Course Performance */}
+        {courseStats.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Course Enrollment Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={courseStats.slice(0, 10)}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="course_code" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="enrolled_students" fill="#3b82f6" name="Enrolled Students" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
 
-  // Default Dashboard
+  // Teacher Dashboard
+  if (permissionChecker.hasRole('teacher')) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">My Teaching Dashboard</h1>
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            Teacher
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">My Courses</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_courses || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">My Students</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_students || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.active_sessions || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Attendance Records</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_attendance_records || 0}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Next Session</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No upcoming sessions</p>
+                <p className="text-sm text-gray-400">Check your schedule or create a new session</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No recent sessions</p>
+                  <p className="text-sm text-gray-400">Your recent teaching sessions will appear here</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Weekly Attendance Trend */}
+        {dashboardData?.weekly_attendance_trend && dashboardData.weekly_attendance_trend.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Weekly Attendance Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={dashboardData.weekly_attendance_trend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="attendance_rate" stroke="#3b82f6" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  // Default Dashboard for users without specific roles
   return (
     <div className="flex items-center justify-center h-64">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to FACE.IT</h2>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Welcome to FACE.IT</h1>
+          <div>
+            <span className="text-gray-600 mb-4">
+              Role: </span>
+            <Badge variant="outline">{userPermissions.role}</Badge>
+          </div>
+        </div>
         <p className="text-gray-600">Please contact your administrator for access permissions.</p>
       </div>
     </div>

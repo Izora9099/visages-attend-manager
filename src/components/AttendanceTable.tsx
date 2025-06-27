@@ -1,358 +1,597 @@
-import { useEffect, useState } from "react";
+// src/components/AttendanceTable.tsx - Updated to work with Django ViewSet API
+
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Search, Download, Edit, Save, X, ChevronDown, RefreshCw } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { djangoApi } from "@/services/djangoApi";
-import * as XLSX from "xlsx";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DatePicker } from "@/components/ui/date-picker";
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  Clock, 
+  Edit, 
+  Trash2, 
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Download,
+  Calendar
+} from "lucide-react";
+
+import { djangoApi } from '@/services/djangoApi';
+import { 
+  AttendanceRecord, 
+  Student, 
+  Course,
+  AttendanceFilters,
+  AttendanceFormData,
+  PaginatedResponse
+} from '@/types';
 
 export const AttendanceTable = () => {
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-  const [selectedLevel, setSelectedLevel] = useState<string>("");
-  const [selectedCourse, setSelectedCourse] = useState<string>("");
-  const [levels, setLevels] = useState<{id: string, name: string}[]>([]);
-  const [courses, setCourses] = useState<{id: string, code: string, title: string}[]>([]);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingRecord, setEditingRecord] = useState<any>(null);
-  const [loading, setLoading] = useState({
-    levels: false,
-    courses: false,
-    attendance: false
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  
+  const [filters, setFilters] = useState<AttendanceFilters>({
+    page: 1,
+    page_size: 20
+  });
+  
+  const [pagination, setPagination] = useState({
+    count: 0,
+    next: null,
+    previous: null
   });
 
-  // Fetch levels on component mount
+  // Form state
+  const [formData, setFormData] = useState<AttendanceFormData>({
+    student: 0,
+    course: 0,
+    status: 'present',
+    notes: ''
+  });
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   useEffect(() => {
-    const fetchLevels = async () => {
-      try {
-        setLoading(prev => ({ ...prev, levels: true }));
-        const data = await djangoApi.getAcademicLevels();
-        setLevels(data.map((level: any) => ({
-          id: level.id,
-          name: level.name
-        })));
-      } catch (err) {
-        console.error("❌ Failed to load levels:", err);
-      } finally {
-        setLoading(prev => ({ ...prev, levels: false }));
-      }
-    };
-    fetchLevels();
+    loadInitialData();
   }, []);
 
-  // Fetch courses when level is selected
   useEffect(() => {
-    const fetchCourses = async () => {
-      if (!selectedLevel) {
-        setCourses([]);
-        setSelectedCourse("");
-        return;
-      }
-      try {
-        setLoading(prev => ({ ...prev, courses: true }));
-        const data = await djangoApi.getCoursesByLevel(selectedLevel);
-        setCourses(data.map((course: any) => ({
-          id: course.id,
-          code: course.code,
-          title: course.title
-        })));
-      } catch (err) {
-        console.error("❌ Failed to load courses:", err);
-      } finally {
-        setLoading(prev => ({ ...prev, courses: false }));
-      }
-    };
-    fetchCourses();
-  }, [selectedLevel]);
+    loadAttendanceRecords();
+  }, [filters]);
 
-  const fetchAttendance = async () => {
+  const loadInitialData = async () => {
     try {
-      setLoading(prev => ({ ...prev, attendance: true }));
-      const params = new URLSearchParams();
-      if (selectedLevel) params.append('level', selectedLevel);
-      if (selectedCourse) params.append('course', selectedCourse);
-      if (selectedDate) params.append('date', selectedDate);
-      
-      const data = await djangoApi.getAttendance(params.toString());
-      const formatted = data.map((record: any) => ({
-        id: record.id,
-        name: record.student_name,
-        matric: record.matric_number,
-        status: record.status,
-        date: record.date,
-        checkIn: record.check_in,
-        level: record.level,
-        course: record.course
-      }));
-      setAttendance(formatted);
-    } catch (err) {
-      console.error("❌ Failed to load attendance:", err);
-    } finally {
-      setLoading(prev => ({ ...prev, attendance: false }));
+      setLoading(true);
+      const [studentsData, coursesData] = await Promise.all([
+        djangoApi.getStudents({ status: 'active' }),
+        djangoApi.getCourses({ status: 'active' })
+      ]);
+
+      setStudents(studentsData.results || studentsData);
+      setCourses(coursesData.results || coursesData);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load initial data');
     }
   };
 
-  // Fetch attendance when filters change
-  useEffect(() => {
-    fetchAttendance();
-  }, [selectedLevel, selectedCourse, selectedDate]);
-
-  const handleLevelChange = (value: string) => {
-    setSelectedLevel(value);
-    setSelectedCourse(""); // Reset course when level changes
+  const loadAttendanceRecords = async () => {
+    try {
+      setLoading(true);
+      const response = await djangoApi.getAttendanceRecords(filters);
+      
+      if (response.results) {
+        // Paginated response
+        setAttendanceRecords(response.results);
+        setPagination({
+          count: response.count,
+          next: response.next,
+          previous: response.previous
+        });
+      } else {
+        // Non-paginated response
+        setAttendanceRecords(response);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load attendance records');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCourseChange = (value: string) => {
-    setSelectedCourse(value);
+  const handleCreateAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormErrors({});
+
+    try {
+      await djangoApi.markAttendance(formData);
+      setIsCreateDialogOpen(false);
+      resetForm();
+      loadAttendanceRecords();
+    } catch (err: any) {
+      if (err.errors) {
+        setFormErrors(err.errors);
+      } else {
+        setError(err.message || 'Failed to mark attendance');
+      }
+    }
   };
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedDate(e.target.value);
+  const handleUpdateAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRecord) return;
+
+    setFormErrors({});
+
+    try {
+      await djangoApi.updateAttendance(selectedRecord.id, {
+        status: formData.status,
+        check_in: new Date().toISOString()
+      });
+      setIsEditDialogOpen(false);
+      setSelectedRecord(null);
+      resetForm();
+      loadAttendanceRecords();
+    } catch (err: any) {
+      if (err.errors) {
+        setFormErrors(err.errors);
+      } else {
+        setError(err.message || 'Failed to update attendance');
+      }
+    }
   };
 
-  const filteredRecords = attendance.filter(
-    (record) =>
-      (record.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.matric.toLowerCase().includes(searchTerm.toLowerCase()))
+  const handleDeleteAttendance = async (record: AttendanceRecord) => {
+    if (!confirm('Are you sure you want to delete this attendance record?')) {
+      return;
+    }
+
+    try {
+      await djangoApi.deleteAttendance(record.id);
+      loadAttendanceRecords();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete attendance record');
+    }
+  };
+
+  const handleEditAttendance = (record: AttendanceRecord) => {
+    setSelectedRecord(record);
+    setFormData({
+      student: record.student,
+      course: record.course,
+      status: record.status,
+      notes: record.notes || ''
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      student: 0,
+      course: 0,
+      status: 'present',
+      notes: ''
+    });
+    setFormErrors({});
+  };
+
+  const handleFilterChange = (key: keyof AttendanceFilters, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+      page: 1 // Reset to first page when filtering
+    }));
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      present: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      late: { color: 'bg-yellow-100 text-yellow-800', icon: AlertCircle },
+      absent: { color: 'bg-red-100 text-red-800', icon: XCircle },
+      excused: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle }
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || 
+                  { color: 'bg-gray-100 text-gray-800', icon: AlertCircle };
+    
+    const IconComponent = config.icon;
+
+    return (
+      <Badge className={`${config.color} flex items-center space-x-1`}>
+        <IconComponent className="h-3 w-3" />
+        <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+      </Badge>
+    );
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString(),
+      time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+  };
+
+  const renderAttendanceForm = (isEdit = false) => (
+    <form onSubmit={isEdit ? handleUpdateAttendance : handleCreateAttendance} className="space-y-4">
+      <div>
+        <Label htmlFor="student">Student *</Label>
+        <Select
+          value={formData.student.toString()}
+          onValueChange={(value) => setFormData(prev => ({ ...prev, student: parseInt(value) }))}
+          disabled={isEdit} // Don't allow changing student in edit mode
+        >
+          <SelectTrigger className={formErrors.student ? 'border-red-500' : ''}>
+            <SelectValue placeholder="Select student" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0" disabled>Select student</SelectItem>
+            {students.map((student) => (
+              <SelectItem key={student.id} value={student.id.toString()}>
+                {student.full_name || `${student.first_name} ${student.last_name}`} ({student.matric_number})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {formErrors.student && (
+          <p className="text-sm text-red-500 mt-1">{formErrors.student}</p>
+        )}
+      </div>
+
+      <div>
+        <Label htmlFor="course">Course *</Label>
+        <Select
+          value={formData.course.toString()}
+          onValueChange={(value) => setFormData(prev => ({ ...prev, course: parseInt(value) }))}
+          disabled={isEdit} // Don't allow changing course in edit mode
+        >
+          <SelectTrigger className={formErrors.course ? 'border-red-500' : ''}>
+            <SelectValue placeholder="Select course" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0" disabled>Select course</SelectItem>
+            {courses.map((course) => (
+              <SelectItem key={course.id} value={course.id.toString()}>
+                {course.course_code} - {course.course_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {formErrors.course && (
+          <p className="text-sm text-red-500 mt-1">{formErrors.course}</p>
+        )}
+      </div>
+
+      <div>
+        <Label htmlFor="status">Status *</Label>
+        <Select
+          value={formData.status}
+          onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as any }))}
+        >
+          <SelectTrigger className={formErrors.status ? 'border-red-500' : ''}>
+            <SelectValue placeholder="Select status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="present">Present</SelectItem>
+            <SelectItem value="late">Late</SelectItem>
+            <SelectItem value="absent">Absent</SelectItem>
+            <SelectItem value="excused">Excused</SelectItem>
+          </SelectContent>
+        </Select>
+        {formErrors.status && (
+          <p className="text-sm text-red-500 mt-1">{formErrors.status}</p>
+        )}
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Input
+          id="notes"
+          value={formData.notes}
+          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+          placeholder="Optional notes..."
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2 pt-4">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={() => {
+            if (isEdit) {
+              setIsEditDialogOpen(false);
+              setSelectedRecord(null);
+            } else {
+              setIsCreateDialogOpen(false);
+            }
+            resetForm();
+          }}
+        >
+          Cancel
+        </Button>
+        <Button type="submit">
+          {isEdit ? 'Update Attendance' : 'Mark Attendance'}
+        </Button>
+      </div>
+    </form>
   );
 
-  const handleEdit = (record: any) => {
-    setEditingId(record.id);
-    setEditingRecord({ ...record });
-  };
-
-  const handleSave = async () => {
-    try {
-      await djangoApi.updateAttendance(editingId!, {
-        status: editingRecord.status,
-        check_in: editingRecord.checkIn, 
-      });
-      await fetchAttendance();
-    } catch (err) {
-      console.error("❌ Update failed:", err);
-    }
-    setEditingId(null);
-    setEditingRecord(null);
-  };
-
-  const handleCancel = () => {
-    setEditingId(null);
-    setEditingRecord(null);
-  };
-
-  const handleExport = () => {
-    const exportData = filteredRecords.map(({ name, matric, date, status, checkIn }) => ({
-      Name: name,
-      MatriculationNumber: matric,
-      Date: date,
-      Status: status,
-      CheckIn: checkIn,
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
-    XLSX.writeFile(workbook, `Attendance_${selectedDate}.xlsx`);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Present":
-        return "bg-green-100 text-green-800";
-      case "Absent":
-        return "bg-red-100 text-red-800";
-      case "Late":
-        return "bg-yellow-100 text-yellow-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+  if (loading && attendanceRecords.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-600">Loading attendance records...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-lg font-medium">Attendance Records</CardTitle>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" onClick={fetchAttendance} disabled={loading.attendance}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading.attendance ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+    <div className="space-y-6">
+      {error && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Attendance Records</h1>
+          <p className="text-gray-600">Track and manage student attendance</p>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Level Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Level</label>
-            <Select value={selectedLevel} onValueChange={handleLevelChange} disabled={loading.levels}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select level">
-                  {selectedLevel ? levels.find(l => l.id === selectedLevel)?.name : 'Select level'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {levels.map((level) => (
-                  <SelectItem key={level.id} value={level.id}>
-                    {level.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex space-x-2">
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Mark Attendance
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Mark Attendance</DialogTitle>
+              </DialogHeader>
+              {renderAttendanceForm()}
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
 
-          {/* Course Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Course</label>
-            <Select 
-              value={selectedCourse} 
-              onValueChange={handleCourseChange}
-              disabled={!selectedLevel || loading.courses}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={!selectedLevel ? 'Select level first' : 'Select course'} />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.code} - {course.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label>Student</Label>
+              <Select
+                value={filters.student_id?.toString() || ''}
+                onValueChange={(value) => handleFilterChange('student_id', value ? parseInt(value) : undefined)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All students" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">All students</SelectItem>
+                  {students.map((student) => (
+                    <SelectItem key={student.id} value={student.id.toString()}>
+                      {student.full_name || `${student.first_name} ${student.last_name}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label>Course</Label>
+              <Select
+                value={filters.course_id?.toString() || ''}
+                onValueChange={(value) => handleFilterChange('course_id', value ? parseInt(value) : undefined)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All courses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">All courses</SelectItem>
+                  {courses.map((course) => (
+                    <SelectItem key={course.id} value={course.id.toString()}>
+                      {course.course_code} - {course.course_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* Date Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Date</label>
-            <div className="relative">
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={handleDateChange}
-                className="w-full pl-3 pr-10 py-2"
-              />
-              <Calendar className="absolute right-3 top-2.5 h-5 w-5 text-muted-foreground pointer-events-none" />
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={filters.status || ''}
+                onValueChange={(value) => handleFilterChange('status', value || undefined)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="present">Present</SelectItem>
+                  <SelectItem value="late">Late</SelectItem>
+                  <SelectItem value="absent">Absent</SelectItem>
+                  <SelectItem value="excused">Excused</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Date Range</Label>
+              <div className="flex space-x-2">
+                <Input
+                  type="date"
+                  value={filters.date_from || ''}
+                  onChange={(e) => handleFilterChange('date_from', e.target.value || undefined)}
+                  className="text-xs"
+                />
+                <Input
+                  type="date"
+                  value={filters.date_to || ''}
+                  onChange={(e) => handleFilterChange('date_to', e.target.value || undefined)}
+                  className="text-xs"
+                />
+              </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Search */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Search</label>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search students..."
-                className="w-full pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+      {/* Attendance Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Attendance Records ({pagination.count || attendanceRecords.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Course</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Check In</TableHead>
+                  <TableHead>Check Out</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {attendanceRecords.map((record) => {
+                  const checkInDateTime = formatDateTime(record.check_in_time);
+                  const checkOutDateTime = record.check_out_time ? formatDateTime(record.check_out_time) : null;
+                  
+                  return (
+                    <TableRow key={record.id}>
+                      <TableCell className="font-medium">
+                        <div>
+                          <div>{record.student_name}</div>
+                          <div className="text-sm text-gray-500">{record.student_matric}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{record.course_code}</div>
+                          <div className="text-sm text-gray-500">{record.course_name}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{checkInDateTime.date}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <Clock className="h-4 w-4 text-gray-400" />
+                          <span>{checkInDateTime.time}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {checkOutDateTime ? (
+                          <div className="flex items-center space-x-1">
+                            <Clock className="h-4 w-4 text-gray-400" />
+                            <span>{checkOutDateTime.time}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(record.status)}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-600">
+                          {record.notes || '-'}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditAttendance(record)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteAttendance(record)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-        </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Matricule Number</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Check In</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredRecords.map((record) => (
-              <TableRow key={record.id}>
-                <TableCell className="font-medium">{record.matric}</TableCell>
-                <TableCell>{record.name}</TableCell>
-                <TableCell>
-                  {editingId === record.id ? (
-                    <Select
-                      value={editingRecord?.status}
-                      onValueChange={(value) =>
-                        setEditingRecord({ ...editingRecord, status: value })
-                      }
-                    >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="Present">Present</SelectItem>
-                        <SelectItem value="Absent">Absent</SelectItem>
-                        <SelectItem value="Late">Late</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge className={getStatusColor(record.status)}>{record.status}</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {editingId === record.id ? (
-                    <Input
-                      type="time"
-                      value={editingRecord?.checkIn}
-                      onChange={(e) =>
-                        setEditingRecord({ ...editingRecord, checkIn: e.target.value })
-                      }
-                      className="w-24"
-                    />
-                  ) : (
-                    record.checkIn
-                  )}
-                </TableCell>
-                <TableCell>
-                  {editingId === record.id ? (
-                    <div className="flex space-x-2">
-                      <Button
-                        size="sm"
-                        onClick={handleSave}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <Save size={14} />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={handleCancel}>
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(record)}
-                    >
-                      <Edit size={14} className="mr-1" />
-                      Edit
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+          {/* Pagination */}
+          {pagination.count > 0 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-600">
+                Showing {((filters.page || 1) - 1) * (filters.page_size || 20) + 1} to{' '}
+                {Math.min((filters.page || 1) * (filters.page_size || 20), pagination.count)} of{' '}
+                {pagination.count} records
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.previous}
+                  onClick={() => handleFilterChange('page', (filters.page || 1) - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.next}
+                  onClick={() => handleFilterChange('page', (filters.page || 1) + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Attendance</DialogTitle>
+          </DialogHeader>
+          {renderAttendanceForm(true)}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
