@@ -1,4 +1,4 @@
-// Complete TeacherManagement.tsx - Final Working Version
+// Fixed TeachersManagement.tsx - Properly integrated with Backend API
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,25 +73,24 @@ interface Filters {
   status?: string;
 }
 
-export const TeacherManagement = () => {
+const TeachersManagement = () => {
   // State management
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [filters, setFilters] = useState<Filters>({});
   
   // Dialog states
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isCourseAssignmentOpen, setIsCourseAssignmentOpen] = useState(false);
+  const [isAddTeacherOpen, setIsAddTeacherOpen] = useState(false);
+  const [isEditTeacherOpen, setIsEditTeacherOpen] = useState(false);
+  const [isViewTeacherOpen, setIsViewTeacherOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [viewingTeacher, setViewingTeacher] = useState<Teacher | null>(null);
-  const [assigningTeacher, setAssigningTeacher] = useState<Teacher | null>(null);
   
-  // Form state
+  // Form states
   const [formData, setFormData] = useState<TeacherFormData>({
     first_name: "",
     last_name: "",
@@ -105,54 +104,42 @@ export const TeacherManagement = () => {
     password: "",
     confirm_password: ""
   });
-  
   const [formErrors, setFormErrors] = useState<Partial<TeacherFormData>>({});
   const [formLoading, setFormLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  
-  // Filter state
-  const [filters, setFilters] = useState<Filters>({});
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
-  // Auto-clear messages
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(""), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
-
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(""), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
-
-  // Load initial data
+  // Load initial data on component mount
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  // Load teachers when filters change
+  // Reload teachers when filters change
   useEffect(() => {
-    if (departments.length > 0) {
-      loadTeachers();
-    }
+    loadTeachers();
   }, [filters]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
+      setError("");
       
-      // Load all required data in parallel
-      const [deptData, courseData] = await Promise.all([
-        djangoApi.getDepartments({ is_active: true }).catch(() => []),
-        djangoApi.getCourses({ status: 'active' }).catch(() => [])
+      // Load departments and courses concurrently
+      const [deptResponse, courseResponse] = await Promise.all([
+        djangoApi.getDepartments().catch(err => {
+          console.warn("Departments endpoint not available:", err);
+          return { results: [] };
+        }),
+        djangoApi.getCourses().catch(err => {
+          console.warn("Courses endpoint not available:", err);
+          return { results: [] };
+        })
       ]);
-
-      setDepartments(Array.isArray(deptData) ? deptData : deptData?.results || []);
-      setCourses(Array.isArray(courseData) ? courseData : courseData?.results || []);
+      
+      // Handle different response formats
+      const deptData = Array.isArray(deptResponse) ? deptResponse : deptResponse?.results || [];
+      const courseData = Array.isArray(courseResponse) ? courseResponse : courseResponse?.results || [];
+      
+      setDepartments(deptData);
+      setCourses(courseData);
       
     } catch (err: any) {
       console.error("Failed to load initial data:", err);
@@ -167,21 +154,23 @@ export const TeacherManagement = () => {
       setLoading(true);
       setError("");
       
-      // Use admin users endpoint to get teacher users
+      // Use admin users endpoint to get all users, then filter for teachers
       const response = await djangoApi.getAdminUsers();
       
-      // Filter for teachers only and apply search filters
+      // Filter for teachers only
       let teacherData = response.filter((user: any) => 
         user.role === 'teacher' || user.role === 'Teacher'
       );
       
-      // Apply client-side filtering if needed
+      // Apply client-side filtering
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         teacherData = teacherData.filter((teacher: any) =>
           teacher.name?.toLowerCase().includes(searchLower) ||
           teacher.email?.toLowerCase().includes(searchLower) ||
-          teacher.username?.toLowerCase().includes(searchLower)
+          teacher.username?.toLowerCase().includes(searchLower) ||
+          teacher.first_name?.toLowerCase().includes(searchLower) ||
+          teacher.last_name?.toLowerCase().includes(searchLower)
         );
       }
 
@@ -192,13 +181,17 @@ export const TeacherManagement = () => {
       }
 
       if (filters.status === 'active') {
-        teacherData = teacherData.filter((teacher: any) => teacher.status === 'Active');
+        teacherData = teacherData.filter((teacher: any) => 
+          teacher.status === 'Active' || teacher.is_active === true
+        );
       } else if (filters.status === 'inactive') {
-        teacherData = teacherData.filter((teacher: any) => teacher.status !== 'Active');
+        teacherData = teacherData.filter((teacher: any) => 
+          teacher.status !== 'Active' || teacher.is_active === false
+        );
       }
       
-      // Transform the data to match our interface
-      const transformedTeachers = teacherData.map((teacher: any) => ({
+      // Transform the data to match our Teacher interface
+      const transformedTeachers: Teacher[] = teacherData.map((teacher: any) => ({
         id: teacher.id,
         username: teacher.username || teacher.email,
         email: teacher.email,
@@ -213,7 +206,7 @@ export const TeacherManagement = () => {
         assigned_courses: teacher.assigned_courses || [],
         is_active: teacher.status === 'Active' || teacher.is_active !== false,
         last_login: teacher.last_login,
-        date_joined: teacher.date_joined || teacher.created_at,
+        date_joined: teacher.date_joined || teacher.created_at || new Date().toISOString(),
         created_at: teacher.created_at || new Date().toISOString(),
         updated_at: teacher.updated_at || new Date().toISOString()
       }));
@@ -276,11 +269,16 @@ export const TeacherManagement = () => {
       setFormLoading(true);
       setError("");
       
+      // Prepare teacher data for backend
       const teacherData = {
         name: `${formData.first_name} ${formData.last_name}`,
         email: formData.email,
         phone: formData.phone,
         role: 'Teacher',
+        department: formData.department,
+        employee_id: formData.employee_id,
+        specialization: formData.specialization,
+        // Default teacher permissions
         permissions: [
           'view_student_roster', 'view_attendance', 'edit_attendance',
           'start_sessions', 'view_reports', 'generate_reports', 'view_timetable'
@@ -290,7 +288,7 @@ export const TeacherManagement = () => {
       const newTeacher = await djangoApi.createAdminUser(teacherData);
       
       // Transform the response to match our interface
-      const transformedTeacher = {
+      const transformedTeacher: Teacher = {
         id: newTeacher.id,
         username: newTeacher.email,
         email: newTeacher.email,
@@ -312,7 +310,7 @@ export const TeacherManagement = () => {
       
       setTeachers(prev => [transformedTeacher, ...prev]);
       setSuccess("Teacher created successfully!");
-      setIsCreateDialogOpen(false);
+      setIsAddTeacherOpen(false);
       resetForm();
       
     } catch (err: any) {
@@ -323,26 +321,8 @@ export const TeacherManagement = () => {
     }
   };
 
-  const handleEditTeacher = (teacher: Teacher) => {
-    setEditingTeacher(teacher);
-    setFormData({
-      first_name: teacher.first_name,
-      last_name: teacher.last_name,
-      username: teacher.username,
-      email: teacher.email,
-      phone: teacher.phone || "",
-      department: teacher.department || "",
-      employee_id: teacher.employee_id || "",
-      specialization: teacher.specialization || "",
-      assigned_courses: teacher.assigned_courses.map(c => c.id) || [],
-      password: "",
-      confirm_password: ""
-    });
-    setIsEditDialogOpen(true);
-  };
-
   const handleUpdateTeacher = async () => {
-    if (!validateForm() || !editingTeacher) return;
+    if (!editingTeacher || !validateForm()) return;
     
     try {
       setFormLoading(true);
@@ -351,29 +331,34 @@ export const TeacherManagement = () => {
       const updateData = {
         name: `${formData.first_name} ${formData.last_name}`,
         email: formData.email,
-        role: 'Teacher'
+        phone: formData.phone,
+        department: formData.department,
+        employee_id: formData.employee_id,
+        specialization: formData.specialization,
       };
       
-      await djangoApi.updateAdminUser(editingTeacher.id, updateData);
+      const updatedTeacher = await djangoApi.updateAdminUser(editingTeacher.id, updateData);
       
-      // Update local state
-      setTeachers(prev => prev.map(t => 
-        t.id === editingTeacher.id ? {
-          ...t,
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          full_name: `${formData.first_name} ${formData.last_name}`,
-          email: formData.email,
-          phone: formData.phone,
-          department: formData.department,
-          employee_id: formData.employee_id,
-          specialization: formData.specialization,
-          updated_at: new Date().toISOString()
-        } : t
+      // Update the teachers list
+      setTeachers(prev => prev.map(teacher => 
+        teacher.id === editingTeacher.id 
+          ? {
+              ...teacher,
+              first_name: formData.first_name,
+              last_name: formData.last_name,
+              full_name: `${formData.first_name} ${formData.last_name}`,
+              email: formData.email,
+              phone: formData.phone,
+              department: formData.department,
+              employee_id: formData.employee_id,
+              specialization: formData.specialization,
+              updated_at: new Date().toISOString()
+            }
+          : teacher
       ));
       
       setSuccess("Teacher updated successfully!");
-      setIsEditDialogOpen(false);
+      setIsEditTeacherOpen(false);
       setEditingTeacher(null);
       resetForm();
       
@@ -385,14 +370,14 @@ export const TeacherManagement = () => {
     }
   };
 
-  const handleDeleteTeacher = async (teacherId: number) => {
-    if (!confirm("Are you sure you want to delete this teacher? This action cannot be undone.")) {
-      return;
-    }
+  const handleDeleteTeacher = async (teacher: Teacher) => {
+    if (!confirm(`Are you sure you want to delete ${teacher.full_name}?`)) return;
     
     try {
-      await djangoApi.deleteAdminUser(teacherId);
-      setTeachers(prev => prev.filter(t => t.id !== teacherId));
+      setError("");
+      await djangoApi.deleteAdminUser(teacher.id);
+      
+      setTeachers(prev => prev.filter(t => t.id !== teacher.id));
       setSuccess("Teacher deleted successfully!");
       
     } catch (err: any) {
@@ -401,992 +386,647 @@ export const TeacherManagement = () => {
     }
   };
 
-  const handleViewTeacher = (teacher: Teacher) => {
+  const openEditDialog = (teacher: Teacher) => {
+    setEditingTeacher(teacher);
+    setFormData({
+      first_name: teacher.first_name,
+      last_name: teacher.last_name,
+      username: teacher.username,
+      email: teacher.email,
+      phone: teacher.phone || "",
+      department: teacher.department || "",
+      employee_id: teacher.employee_id || "",
+      specialization: teacher.specialization || "",
+      assigned_courses: teacher.assigned_courses?.map(c => c.id) || [],
+      password: "",
+      confirm_password: ""
+    });
+    setIsEditTeacherOpen(true);
+  };
+
+  const openViewDialog = (teacher: Teacher) => {
     setViewingTeacher(teacher);
-    setIsViewDialogOpen(true);
+    setIsViewTeacherOpen(true);
   };
 
-  const handleCourseAssignment = (teacher: Teacher) => {
-    setAssigningTeacher(teacher);
-    setFormData(prev => ({
-      ...prev,
-      assigned_courses: teacher.assigned_courses.map(c => c.id) || []
-    }));
-    setIsCourseAssignmentOpen(true);
+  const clearMessages = () => {
+    setError("");
+    setSuccess("");
   };
 
-  const handleSaveCourseAssignment = async () => {
-    if (!assigningTeacher) return;
-    
-    try {
-      setFormLoading(true);
-      setError("");
-      
-      // Update teacher with new course assignments
-      const assignedCourses = courses.filter(course => 
-        formData.assigned_courses.includes(course.id)
-      );
-      
-      // Update local state
-      setTeachers(prev => prev.map(t => 
-        t.id === assigningTeacher.id ? {
-          ...t,
-          assigned_courses: assignedCourses,
-          updated_at: new Date().toISOString()
-        } : t
-      ));
-      
-      setSuccess("Course assignments updated successfully!");
-      setIsCourseAssignmentOpen(false);
-      setAssigningTeacher(null);
-      resetForm();
-      
-    } catch (err: any) {
-      console.error("Failed to update course assignments:", err);
-      setError("Failed to update course assignments: " + (err.message || "Unknown error"));
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
-  const getStatusBadgeColor = (isActive: boolean) => {
-    return isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-  };
-
-  const handleCourseToggle = (courseId: number, checked: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      assigned_courses: checked 
-        ? [...prev.assigned_courses, courseId]
-        : prev.assigned_courses.filter(id => id !== courseId)
-    }));
-  };
-
-  // Show loading state during initial load
-  if (loading && teachers.length === 0 && departments.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Loading teachers...</p>
-        </div>
-      </div>
-    );
-  }
+  // Filter teachers based on current filters
+  const filteredTeachers = teachers;
 
   return (
     <div className="space-y-6">
-      {/* Messages */}
-      {error && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-700">{error}</AlertDescription>
-        </Alert>
-      )}
-      
-      {success && (
-        <Alert className="border-green-200 bg-green-50">
-          <AlertCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-700">{success}</AlertDescription>
-        </Alert>
-      )}
-
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Teacher Management</h1>
-          <p className="text-gray-600">Manage teacher accounts and course assignments</p>
+          <h1 className="text-3xl font-bold text-gray-900">Teachers Management</h1>
+          <p className="text-gray-600 mt-1">Manage teacher accounts, departments, and course assignments</p>
         </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={loadTeachers}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+        
+        <div className="flex space-x-3">
+          <Button 
+            variant="outline" 
+            onClick={loadTeachers}
+            disabled={loading}
+            className="flex items-center"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          
+          <Dialog open={isAddTeacherOpen} onOpenChange={setIsAddTeacherOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Plus size={16} className="mr-2" />
+              <Button className="flex items-center bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-2" />
                 Add Teacher
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Add New Teacher</DialogTitle>
               </DialogHeader>
-              
-              {/* Create Teacher Form */}
-              <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="first_name">First Name *</Label>
-                    <Input
-                      id="first_name"
-                      value={formData.first_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
-                      className={formErrors.first_name ? 'border-red-500' : ''}
-                    />
-                    {formErrors.first_name && (
-                      <p className="text-sm text-red-500 mt-1">{formErrors.first_name}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="last_name">Last Name *</Label>
-                    <Input
-                      id="last_name"
-                      value={formData.last_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
-                      className={formErrors.last_name ? 'border-red-500' : ''}
-                    />
-                    {formErrors.last_name && (
-                      <p className="text-sm text-red-500 mt-1">{formErrors.last_name}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      email: e.target.value,
-                      username: e.target.value
-                    }))}
-                    className={formErrors.email ? 'border-red-500' : ''}
-                  />
-                  {formErrors.email && (
-                    <p className="text-sm text-red-500 mt-1">{formErrors.email}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                      placeholder="+234 123 456 7890"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="employee_id">Employee ID</Label>
-                    <Input
-                      id="employee_id"
-                      value={formData.employee_id}
-                      onChange={(e) => setFormData(prev => ({ ...prev, employee_id: e.target.value }))}
-                      placeholder="EMP001"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="department">Department</Label>
-                    <Select
-                      value={formData.department}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.department_name}>
-                            {dept.department_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="specialization">Specialization</Label>
-                    <Input
-                      id="specialization"
-                      value={formData.specialization}
-                      onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
-                      placeholder="e.g., Software Engineering"
-                    />
-                  </div>
-                </div>
-
-                {/* Password fields for new teachers only */}
-                {!editingTeacher && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="password">Password *</Label>
-                      <div className="relative">
-                        <Input
-                          id="password"
-                          type={showPassword ? "text" : "password"}
-                          value={formData.password}
-                          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                          className={formErrors.password ? 'border-red-500 pr-10' : 'pr-10'}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      {formErrors.password && (
-                        <p className="text-sm text-red-500 mt-1">{formErrors.password}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="confirm_password">Confirm Password *</Label>
-                      <Input
-                        id="confirm_password"
-                        type={showPassword ? "text" : "password"}
-                        value={formData.confirm_password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, confirm_password: e.target.value }))}
-                        className={formErrors.confirm_password ? 'border-red-500' : ''}
-                      />
-                      {formErrors.confirm_password && (
-                        <p className="text-sm text-red-500 mt-1">{formErrors.confirm_password}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                      setIsCreateDialogOpen(false);
-                      resetForm();
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="button"
-                    onClick={handleCreateTeacher}
-                    disabled={formLoading}
-                  >
-                    {formLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
-                    Create Teacher
-                  </Button>
-                </div>
-              </form>
+              <TeacherForm 
+                formData={formData}
+                setFormData={setFormData}
+                formErrors={formErrors}
+                departments={departments}
+                courses={courses}
+                loading={formLoading}
+                onSubmit={handleCreateTeacher}
+                onCancel={() => {
+                  setIsAddTeacherOpen(false);
+                  resetForm();
+                }}
+                isEdit={false}
+              />
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Teachers</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{teachers.length}</div>
-          </CardContent>
-        </Card>
+      {/* Messages */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex justify-between items-center">
+            {error}
+            <Button variant="ghost" size="sm" onClick={clearMessages}>×</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Teachers</CardTitle>
-            <Users className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {teachers.filter(t => t.is_active).length}
-            </div>
-          </CardContent>
-        </Card>
+      {success && (
+        <Alert className="border-green-200 bg-green-50">
+          <AlertDescription className="flex justify-between items-center text-green-800">
+            {success}
+            <Button variant="ghost" size="sm" onClick={clearMessages}>×</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Departments</CardTitle>
-            <Building className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {departments.length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Course Assignments</CardTitle>
-            <BookOpen className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {teachers.reduce((total, teacher) => total + (teacher.assigned_courses?.length || 0), 0)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters and View Toggle */}
+      {/* Filters */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Filters</CardTitle>
-            <div className="flex space-x-2">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-              >
-                Grid
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-              >
-                Table
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label>Search</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search by name, email..."
-                  value={filters.search || ''}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Input
+                placeholder="Search teachers..."
+                value={filters.search || ""}
+                onChange={(e) => handleFilterChange('search', e.target.value)}
+                className="pl-10"
+              />
             </div>
             
-            <div>
-              <Label>Department</Label>
-              <Select
-                value={filters.department || ''}
-                onValueChange={(value) => handleFilterChange('department', value || undefined)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All departments</SelectItem>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.department_name}>
-                      {dept.department_name
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-  
-              <div>
-                <Label>Status</Label>
-                <Select
-                  value={filters.status || ''}
-                  onValueChange={(value) => handleFilterChange('status', value || undefined)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">All statuses</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
+            <Select onValueChange={(value) => handleFilterChange('department', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.department_name}>
+                    {dept.department_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select onValueChange={(value) => handleFilterChange('status', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button variant="outline" onClick={() => setFilters({})}>
+              Clear Filters
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Teachers Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center">
+              <Users className="h-5 w-5 mr-2" />
+              Teachers ({filteredTeachers.length})
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading teachers...</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-  
-        {/* Teachers Display */}
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <RefreshCw className="h-6 w-6 animate-spin" />
-          </div>
-        ) : viewMode === 'grid' ? (
-          /* Grid View */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {teachers.length > 0 ? (
-              teachers.map((teacher) => (
-                <Card key={teacher.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${teacher.email}`} />
-                          <AvatarFallback>
-                            {teacher.first_name[0]}{teacher.last_name[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <CardTitle className="text-lg">
-                            {teacher.full_name || `${teacher.first_name} ${teacher.last_name}`}
-                          </CardTitle>
-                          <p className="text-sm text-gray-500">{teacher.employee_id}</p>
+          ) : filteredTeachers.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No teachers found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {Object.keys(filters).length > 0 ? "Try adjusting your filters" : "Add your first teacher to get started"}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Teacher</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Employee ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last Login</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTeachers.map((teacher) => (
+                    <TableRow key={teacher.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <Avatar>
+                            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${teacher.full_name}`} />
+                            <AvatarFallback>
+                              {teacher.first_name[0]}{teacher.last_name[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{teacher.full_name}</div>
+                            <div className="text-sm text-gray-500">{teacher.email}</div>
+                          </div>
                         </div>
-                      </div>
-                      <Badge className={getStatusBadgeColor(teacher.is_active)}>
-                        {teacher.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <Building className="h-3 w-3 mr-1" />
-                        Department
-                      </p>
-                      <p className="font-medium">{teacher.department || 'Not assigned'}</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <GraduationCap className="h-3 w-3 mr-1" />
-                        Specialization
-                      </p>
-                      <p className="font-medium">{teacher.specialization || 'Not specified'}</p>
-                    </div>
-  
-                    <div>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <Mail className="h-3 w-3 mr-1" />
-                        Email
-                      </p>
-                      <p className="font-medium text-sm">{teacher.email}</p>
-                    </div>
-  
-                    {teacher.phone && (
-                      <div>
-                        <p className="text-sm text-gray-500 flex items-center">
-                          <Phone className="h-3 w-3 mr-1" />
-                          Phone
-                        </p>
-                        <p className="font-medium text-sm">{teacher.phone}</p>
-                      </div>
-                    )}
-  
-                    <div>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <BookOpen className="h-3 w-3 mr-1" />
-                        Courses ({teacher.assigned_courses?.length || 0})
-                      </p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {teacher.assigned_courses?.slice(0, 3).map((course, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
-                            {course.course_code}
-                          </Badge>
-                        ))}
-                        {(teacher.assigned_courses?.length || 0) > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{(teacher.assigned_courses?.length || 0) - 3} more
-                          </Badge>
-                        )}
-                        {(!teacher.assigned_courses || teacher.assigned_courses.length === 0) && (
-                          <span className="text-xs text-gray-400">No courses assigned</span>
-                        )}
-                      </div>
-                    </div>
-  
-                    <div>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <Calendar className="h-3 w-3 mr-1" />
-                        Last Login
-                      </p>
-                      <p className="font-medium text-sm">
-                        {teacher.last_login 
-                          ? new Date(teacher.last_login).toLocaleDateString()
-                          : 'Never'
-                        }
-                      </p>
-                    </div>
-  
-                    <div className="flex space-x-2 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleViewTeacher(teacher)}
-                      >
-                        <Eye size={14} className="mr-1" />
-                        View
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleEditTeacher(teacher)}
-                      >
-                        <Edit size={14} className="mr-1" />
-                        Edit
-                      </Button>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleCourseAssignment(teacher)}
-                      >
-                        <BookOpen size={14} className="mr-1" />
-                        Courses
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteTeacher(teacher.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-8">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <div className="text-gray-500">
-                  {filters.search || filters.department ? 
-                    "No teachers found matching your filters." : 
-                    "No teachers found. Add your first teacher to get started."
-                  }
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Table View */
-          <Card>
-            <CardHeader>
-              <CardTitle>Teachers ({teachers.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Teacher</TableHead>
-                      <TableHead>Employee ID</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Courses</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Login</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {teachers.map((teacher) => (
-                      <TableRow key={teacher.id}>
-                        <TableCell>
-                          <div className="flex items-center space-x-3">
-                            <Avatar>
-                              <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${teacher.email}`} />
-                              <AvatarFallback>
-                                {teacher.first_name[0]}{teacher.last_name[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="font-medium">
-                                {teacher.full_name || `${teacher.first_name} ${teacher.last_name}`}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {teacher.specialization || 'No specialization'}
-                              </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center text-sm">
+                            <Mail className="h-3 w-3 mr-1 text-gray-400" />
+                            {teacher.email}
+                          </div>
+                          {teacher.phone && (
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Phone className="h-3 w-3 mr-1 text-gray-400" />
+                              {teacher.phone}
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono">{teacher.employee_id}</TableCell>
-                        <TableCell>{teacher.email}</TableCell>
-                        <TableCell>{teacher.department || 'Not assigned'}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {teacher.assigned_courses?.slice(0, 2).map((course, index) => (
-                              <Badge key={index} variant="outline" className="text-xs">
-                                {course.course_code}
-                              </Badge>
-                            ))}
-                            {(teacher.assigned_courses?.length || 0) > 2 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{(teacher.assigned_courses?.length || 0) - 2}
-                              </Badge>
-                            )}
-                            {(!teacher.assigned_courses || teacher.assigned_courses.length === 0) && (
-                              <span className="text-xs text-gray-400">None</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getStatusBadgeColor(teacher.is_active)}>
-                            {teacher.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{teacher.department || 'Not assigned'}</div>
+                          {teacher.specialization && (
+                            <div className="text-sm text-gray-500">{teacher.specialization}</div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{teacher.employee_id}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={teacher.is_active ? "default" : "secondary"}>
+                          {teacher.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
                           {teacher.last_login 
                             ? new Date(teacher.last_login).toLocaleDateString()
                             : 'Never'
                           }
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewTeacher(teacher)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditTeacher(teacher)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCourseAssignment(teacher)}
-                            >
-                              <BookOpen className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteTeacher(teacher.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {teachers.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
-                          <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <div className="text-gray-500">
-                            {filters.search || filters.department ? 
-                              "No teachers found matching your filters." : 
-                              "No teachers found. Add your first teacher to get started."
-                            }
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-  
-        {/* Edit Teacher Dialog */}
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Edit Teacher</DialogTitle>
-            </DialogHeader>
-            
-            {/* Edit Teacher Form */}
-            <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="edit_first_name">First Name *</Label>
-                  <Input
-                    id="edit_first_name"
-                    value={formData.first_name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
-                    className={formErrors.first_name ? 'border-red-500' : ''}
-                  />
-                  {formErrors.first_name && (
-                    <p className="text-sm text-red-500 mt-1">{formErrors.first_name}</p>
-                  )}
-                </div>
-  
-                <div>
-                  <Label htmlFor="edit_last_name">Last Name *</Label>
-                  <Input
-                    id="edit_last_name"
-                    value={formData.last_name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
-                    className={formErrors.last_name ? 'border-red-500' : ''}
-                  />
-                  {formErrors.last_name && (
-                    <p className="text-sm text-red-500 mt-1">{formErrors.last_name}</p>
-                  )}
-                </div>
-              </div>
-  
-              <div>
-                <Label htmlFor="edit_email">Email *</Label>
-                <Input
-                  id="edit_email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    email: e.target.value,
-                    username: e.target.value
-                  }))}
-                  className={formErrors.email ? 'border-red-500' : ''}
-                />
-                {formErrors.email && (
-                  <p className="text-sm text-red-500 mt-1">{formErrors.email}</p>
-                )}
-              </div>
-  
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="edit_phone">Phone</Label>
-                  <Input
-                    id="edit_phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="+234 123 456 7890"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="edit_employee_id">Employee ID</Label>
-                  <Input
-                    id="edit_employee_id"
-                    value={formData.employee_id}
-                    onChange={(e) => setFormData(prev => ({ ...prev, employee_id: e.target.value }))}
-                    placeholder="EMP001"
-                  />
-                </div>
-              </div>
-  
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="edit_department">Department</Label>
-                  <Select
-                    value={formData.department}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.department_name}>
-                          {dept.department_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="edit_specialization">Specialization</Label>
-                  <Input
-                    id="edit_specialization"
-                    value={formData.specialization}
-                    onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
-                    placeholder="e.g., Software Engineering"
-                  />
-                </div>
-              </div>
-  
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => {
-                    setIsEditDialogOpen(false);
-                    setEditingTeacher(null);
-                    resetForm();
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={handleUpdateTeacher}
-                  disabled={formLoading}
-                >
-                  {formLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
-                  Update Teacher
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-  
-        {/* Teacher Details Dialog */}
-        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Teacher Details</DialogTitle>
-            </DialogHeader>
-            {viewingTeacher && (
-              <div className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingTeacher.email}`} />
-                    <AvatarFallback>
-                      {viewingTeacher.first_name[0]}{viewingTeacher.last_name[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="text-xl font-semibold">{viewingTeacher.full_name}</h3>
-                    <p className="text-gray-600">{viewingTeacher.employee_id}</p>
-                    <Badge className={getStatusBadgeColor(viewingTeacher.is_active)}>
-                      {viewingTeacher.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                </div>
-  
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <Mail className="h-4 w-4 mr-2" />
-                      Email
-                    </Label>
-                    <p className="mt-1">{viewingTeacher.email}</p>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <Phone className="h-4 w-4 mr-2" />
-                      Phone
-                    </Label>
-                    <p className="mt-1">{viewingTeacher.phone || 'Not provided'}</p>
-                  </div>
-  
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <Building className="h-4 w-4 mr-2" />
-                      Department
-                    </Label>
-                    <p className="mt-1">{viewingTeacher.department || 'Not assigned'}</p>
-                  </div>
-  
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <GraduationCap className="h-4 w-4 mr-2" />
-                      Specialization
-                    </Label>
-                    <p className="mt-1">{viewingTeacher.specialization || 'Not specified'}</p>
-                  </div>
-  
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Last Login
-                    </Label>
-                    <p className="mt-1">
-                      {viewingTeacher.last_login 
-                        ? new Date(viewingTeacher.last_login).toLocaleDateString()
-                        : 'Never'
-                      }
-                    </p>
-                  </div>
-  
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500 flex items-center">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Joined Date
-                    </Label>
-                    <p className="mt-1">{new Date(viewingTeacher.date_joined).toLocaleDateString()}</p>
-                  </div>
-                </div>
-  
-                <div>
-                  <Label className="text-sm font-medium text-gray-500 flex items-center">
-                    <BookOpen className="h-4 w-4 mr-2" />
-                    Assigned Courses ({viewingTeacher.assigned_courses?.length || 0})
-                  </Label>
-                  <div className="mt-2">
-                    {viewingTeacher.assigned_courses?.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {viewingTeacher.assigned_courses.map((course, index) => (
-                          <Badge key={index} variant="outline">
-                            {course.course_code} - {course.course_name}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500">No courses assigned</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-  
-        {/* Course Assignment Dialog */}
-        <Dialog open={isCourseAssignmentOpen} onOpenChange={setIsCourseAssignmentOpen}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                Course Assignments - {assigningTeacher?.full_name}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Available Courses</Label>
-                <div className="border rounded-lg p-3 max-h-60 overflow-y-auto">
-                  {courses.length > 0 ? (
-                    courses.map(course => (
-                      <div key={course.id} className="flex items-center space-x-2 mb-2">
-                        <Checkbox
-                          id={`course-${course.id}`}
-                          checked={formData.assigned_courses.includes(course.id)}
-                          onCheckedChange={(checked) => handleCourseToggle(course.id, checked as boolean)}
-                        />
-                        <Label htmlFor={`course-${course.id}`} className="text-sm flex-1">
-                          <span className="font-medium">{course.course_code}</span> - {course.course_name}
-                          <span className="text-gray-500 ml-2">({course.level_name})</span>
-                        </Label>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500">No courses available for assignment</p>
-                  )}
-                </div>
-              </div>
-  
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => {
-                    setIsCourseAssignmentOpen(false);
-                    setAssigningTeacher(null);
-                    resetForm();
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={handleSaveCourseAssignment}
-                  disabled={formLoading}
-                >
-                  {formLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
-                  Save Assignments
-                </Button>
-              </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openViewDialog(teacher)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(teacher)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteTeacher(teacher)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Teacher Dialog */}
+      <Dialog open={isEditTeacherOpen} onOpenChange={setIsEditTeacherOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Teacher</DialogTitle>
+          </DialogHeader>
+          <TeacherForm 
+            formData={formData}
+            setFormData={setFormData}
+            formErrors={formErrors}
+            departments={departments}
+            courses={courses}
+            loading={formLoading}
+            onSubmit={handleUpdateTeacher}
+            onCancel={() => {
+              setIsEditTeacherOpen(false);
+              setEditingTeacher(null);
+              resetForm();
+            }}
+            isEdit={true}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* View Teacher Dialog */}
+      <Dialog open={isViewTeacherOpen} onOpenChange={setIsViewTeacherOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Teacher Details</DialogTitle>
+          </DialogHeader>
+          {viewingTeacher && (
+            <TeacherDetails teacher={viewingTeacher} />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+// Teacher Form Component
+interface TeacherFormProps {
+  formData: TeacherFormData;
+  setFormData: React.Dispatch<React.SetStateAction<TeacherFormData>>;
+  formErrors: Partial<TeacherFormData>;
+  departments: Department[];
+  courses: Course[];
+  loading: boolean;
+  onSubmit: () => void;
+  onCancel: () => void;
+  isEdit: boolean;
+}
+
+const TeacherForm: React.FC<TeacherFormProps> = ({
+  formData,
+  setFormData,
+  formErrors,
+  departments,
+  courses,
+  loading,
+  onSubmit,
+  onCancel,
+  isEdit
+}) => {
+  const handleInputChange = (field: keyof TeacherFormData, value: string | number[]) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  return (
+    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="first_name">First Name *</Label>
+          <Input
+            id="first_name"
+            value={formData.first_name}
+            onChange={(e) => handleInputChange('first_name', e.target.value)}
+            placeholder="Enter first name"
+            className={formErrors.first_name ? "border-red-500" : ""}
+          />
+          {formErrors.first_name && (
+            <p className="text-sm text-red-500 mt-1">{formErrors.first_name}</p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="last_name">Last Name *</Label>
+          <Input
+            id="last_name"
+            value={formData.last_name}
+            onChange={(e) => handleInputChange('last_name', e.target.value)}
+            placeholder="Enter last name"
+            className={formErrors.last_name ? "border-red-500" : ""}
+          />
+          {formErrors.last_name && (
+            <p className="text-sm text-red-500 mt-1">{formErrors.last_name}</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="email">Email *</Label>
+        <Input
+          id="email"
+          type="email"
+          value={formData.email}
+          onChange={(e) => handleInputChange('email', e.target.value)}
+          placeholder="Enter email address"
+          className={formErrors.email ? "border-red-500" : ""}
+        />
+        {formErrors.email && (
+          <p className="text-sm text-red-500 mt-1">{formErrors.email}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="phone">Phone</Label>
+          <Input
+            id="phone"
+            value={formData.phone}
+            onChange={(e) => handleInputChange('phone', e.target.value)}
+            placeholder="Enter phone number"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="employee_id">Employee ID</Label>
+          <Input
+            id="employee_id"
+            value={formData.employee_id}
+            onChange={(e) => handleInputChange('employee_id', e.target.value)}
+            placeholder="Enter employee ID"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="department">Department</Label>
+          <Select onValueChange={(value) => handleInputChange('department', value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              {departments.map((dept) => (
+                <SelectItem key={dept.id} value={dept.department_name}>
+                  {dept.department_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="specialization">Specialization</Label>
+          <Input
+            id="specialization"
+            value={formData.specialization}
+            onChange={(e) => handleInputChange('specialization', e.target.value)}
+            placeholder="Enter specialization"
+          />
+        </div>
+      </div>
+
+      {!isEdit && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="password">Password *</Label>
+            <Input
+              id="password"
+              type="password"
+              value={formData.password}
+              onChange={(e) => handleInputChange('password', e.target.value)}
+              placeholder="Enter password"
+              className={formErrors.password ? "border-red-500" : ""}
+            />
+            {formErrors.password && (
+              <p className="text-sm text-red-500 mt-1">{formErrors.password}</p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="confirm_password">Confirm Password *</Label>
+            <Input
+              id="confirm_password"
+              type="password"
+              value={formData.confirm_password}
+              onChange={(e) => handleInputChange('confirm_password', e.target.value)}
+              placeholder="Confirm password"
+              className={formErrors.confirm_password ? "border-red-500" : ""}
+            />
+            {formErrors.confirm_password && (
+              <p className="text-sm text-red-500 mt-1">{formErrors.confirm_password}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <Label>Assigned Courses</Label>
+        <div className="mt-2 space-y-2 max-h-32 overflow-y-auto border rounded-md p-3">
+          {courses.length > 0 ? courses.map((course) => (
+            <div key={course.id} className="flex items-center space-x-2">
+              <Checkbox
+                id={`course-${course.id}`}
+                checked={formData.assigned_courses.includes(course.id)}
+                onCheckedChange={(checked) => {
+                  const currentCourses = formData.assigned_courses;
+                  if (checked) {
+                    handleInputChange('assigned_courses', [...currentCourses, course.id]);
+                  } else {
+                    handleInputChange('assigned_courses', currentCourses.filter(id => id !== course.id));
+                  }
+                }}
+              />
+              <Label htmlFor={`course-${course.id}`} className="text-sm">
+                {course.course_code} - {course.course_name}
+              </Label>
+            </div>
+          )) : (
+            <p className="text-sm text-gray-500">No courses available</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end space-x-3 pt-4">
+        <Button variant="outline" onClick={onCancel} disabled={loading}>
+          Cancel
+        </Button>
+        <Button onClick={onSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          {loading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              {isEdit ? 'Updating...' : 'Creating...'}
+            </>
+          ) : (
+            isEdit ? 'Update Teacher' : 'Create Teacher'
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Teacher Details Component
+interface TeacherDetailsProps {
+  teacher: Teacher;
+}
+
+const TeacherDetails: React.FC<TeacherDetailsProps> = ({ teacher }) => {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center space-x-4">
+        <Avatar className="h-16 w-16">
+          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${teacher.full_name}`} />
+          <AvatarFallback className="text-lg">
+            {teacher.first_name[0]}{teacher.last_name[0]}
+          </AvatarFallback>
+        </Avatar>
+        
+        <div className="flex-1">
+          <h3 className="text-xl font-semibold">{teacher.full_name}</h3>
+          <p className="text-gray-600">{teacher.role}</p>
+          <div className="mt-2">
+            <Badge variant={teacher.is_active ? "default" : "secondary"}>
+              {teacher.is_active ? 'Active' : 'Inactive'}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <Mail className="h-4 w-4 mr-2" />
+            Email
+          </Label>
+          <p className="mt-1">{teacher.email}</p>
+        </div>
+        
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <Phone className="h-4 w-4 mr-2" />
+            Phone
+          </Label>
+          <p className="mt-1">{teacher.phone || 'Not provided'}</p>
+        </div>
+
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <Building className="h-4 w-4 mr-2" />
+            Department
+          </Label>
+          <p className="mt-1">{teacher.department || 'Not assigned'}</p>
+        </div>
+
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <GraduationCap className="h-4 w-4 mr-2" />
+            Specialization
+          </Label>
+          <p className="mt-1">{teacher.specialization || 'Not specified'}</p>
+        </div>
+
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <User className="h-4 w-4 mr-2" />
+            Employee ID
+          </Label>
+          <p className="mt-1">{teacher.employee_id}</p>
+        </div>
+
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <Calendar className="h-4 w-4 mr-2" />
+            Last Login
+          </Label>
+          <p className="mt-1">
+            {teacher.last_login 
+              ? new Date(teacher.last_login).toLocaleDateString()
+              : 'Never'
+            }
+          </p>
+        </div>
+
+        <div>
+          <Label className="text-sm font-medium text-gray-500 flex items-center">
+            <Calendar className="h-4 w-4 mr-2" />
+            Joined Date
+          </Label>
+          <p className="mt-1">{new Date(teacher.date_joined).toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-sm font-medium text-gray-500 flex items-center">
+          <BookOpen className="h-4 w-4 mr-2" />
+          Assigned Courses ({teacher.assigned_courses?.length || 0})
+        </Label>
+        <div className="mt-2">
+          {teacher.assigned_courses?.length > 0 ? (
+            <div className="space-y-2">
+              {teacher.assigned_courses.map((course) => (
+                <div key={course.id} className="flex items-center justify-between p-2 border rounded">
+                  <div>
+                    <div className="font-medium">{course.course_code}</div>
+                    <div className="text-sm text-gray-600">{course.course_name}</div>
+                  </div>
+                  <Badge variant="outline">{course.status}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 italic">No courses assigned</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Export both named and default for flexibility
+export { TeachersManagement };
+export default TeachersManagement;
+
+// Alternative named export for the import in Index.tsx
+export const TeacherManagement = TeachersManagement;
