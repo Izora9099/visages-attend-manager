@@ -174,7 +174,7 @@ const TeachersManagement = () => {
         );
       }
 
-      if (filters.department) {
+      if (filters.department && filters.department !== 'all') {
         teacherData = teacherData.filter((teacher: any) =>
           teacher.department === filters.department
         );
@@ -501,12 +501,12 @@ const TeachersManagement = () => {
               />
             </div>
             
-            <Select onValueChange={(value) => handleFilterChange('department', value)}>
+            <Select onValueChange={(value) => handleFilterChange('department', value === 'all' ? '' : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by Department" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Departments</SelectItem>
+                <SelectItem value="all">All Departments</SelectItem>
                 {departments.map((dept) => (
                   <SelectItem key={dept.id} value={dept.department_name}>
                     {dept.department_name}
@@ -515,12 +515,12 @@ const TeachersManagement = () => {
               </SelectContent>
             </Select>
             
-            <Select onValueChange={(value) => handleFilterChange('status', value)}>
+            <Select onValueChange={(value) => handleFilterChange('status', value === 'all' ? '' : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
@@ -802,11 +802,12 @@ const TeacherForm: React.FC<TeacherFormProps> = ({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="department">Department</Label>
-          <Select onValueChange={(value) => handleInputChange('department', value)}>
+          <Select value={formData.department} onValueChange={(value) => handleInputChange('department', value)}>
             <SelectTrigger>
               <SelectValue placeholder="Select department" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">No Department</SelectItem>
               {departments.map((dept) => (
                 <SelectItem key={dept.id} value={dept.department_name}>
                   {dept.department_name}
