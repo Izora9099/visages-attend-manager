@@ -1,5 +1,5 @@
 // src/components/CourseManagement.tsx
-// New component for managing courses and levels
+// Fixed component for managing courses and levels
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,12 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BookOpen, Plus, Edit, Trash2, Users, Clock, Calendar, ListChecks, Layers, Search } from "lucide-react";
+import { BookOpen, Plus, Edit, Trash2, Users, Clock, Calendar, ListChecks, Layers, Search, AlertCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LevelBasedCourseManager } from './LevelBasedCourseManager';
-import { Course, AcademicLevel } from '@/types/timetable';
-import { timetableApi } from '@/services/timetableApi';
+// Import correct types and API
+import { Course, Level } from '@/types/index'; // Use correct types
+import { djangoApi } from '@/services/djangoApi'; // Use real Django API
 import { CourseDialog } from './CourseDialog';
+import { toast } from 'sonner'; // For notifications
 
 interface CourseManagementProps {
   // Add any props if needed
@@ -25,25 +27,59 @@ interface CourseManagementProps {
 export const CourseManagement: React.FC<CourseManagementProps> = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [courses, setCourses] = useState<Course[]>([]);
-  const [academicLevels, setAcademicLevels] = useState<AcademicLevel[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Fetch courses and academic levels
+  // Fetch courses, levels, and departments from Django backend
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [coursesData, levelsData] = await Promise.all([
-          timetableApi.getCourses(),
-          timetableApi.getAcademicLevels()
+        setError(null);
+        
+        console.log('Fetching courses, levels, and departments from Django API...');
+        
+        // Use the correct Django API endpoints
+        const [coursesResponse, levelsResponse, departmentsResponse] = await Promise.all([
+          djangoApi.getCourses().catch(err => {
+            console.warn('Failed to fetch courses:', err);
+            return [];
+          }),
+          djangoApi.getLevels().catch(err => {
+            console.warn('Failed to fetch levels:', err);
+            return [];
+          }),
+          djangoApi.getDepartments().catch(err => {
+            console.warn('Failed to fetch departments:', err);
+            return [];
+          })
         ]);
-        setCourses(coursesData);
-        setAcademicLevels(levelsData);
-      } catch (error) {
+        
+        console.log('Courses data:', coursesResponse);
+        console.log('Levels data:', levelsResponse);
+        console.log('Departments data:', departmentsResponse);
+        
+        setCourses(coursesResponse || []);
+        setLevels(levelsResponse || []);
+        setDepartments(departmentsResponse || []);
+        
+        if (!coursesResponse?.length && !levelsResponse?.length && !departmentsResponse?.length) {
+          setError('No data available. Please check if the Django backend is running.');
+        }
+        
+      } catch (error: any) {
         console.error('Failed to fetch course data:', error);
+        setError(`Failed to connect to backend: ${error.message || 'Unknown error'}`);
+        
+        // Set empty arrays as fallback
+        setCourses([]);
+        setLevels([]);
+        setDepartments([]);
       } finally {
         setLoading(false);
       }
@@ -68,31 +104,59 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
     setCourses(prev => prev.filter(course => course.id !== courseId));
   };
 
-  const handleSubmitCourse = async (courseData: Omit<Course, 'id' | 'created_at' | 'updated_at'>) => {
+  const handleSubmitCourse = async (courseData: any) => {
     try {
+      let savedCourse: Course;
+      
+      // Log the course data being submitted
+      console.log('Submitting course data:', courseData);
+      
       if (editingCourse) {
         // Update existing course
-        await timetableApi.updateCourse(editingCourse.id, courseData);
+        console.log('Updating course:', editingCourse.id, courseData);
+        savedCourse = await djangoApi.updateCourse(editingCourse.id, courseData);
+        toast.success('Course updated successfully');
       } else {
         // Create new course
-        await timetableApi.createCourse(courseData);
+        console.log('Creating new course:', courseData);
+        savedCourse = await djangoApi.createCourse(courseData);
+        toast.success('Course created successfully');
       }
-      // Refresh courses list
-      const [coursesData] = await Promise.all([
-        timetableApi.getCourses(),
-      ]);
-      setCourses(coursesData);
+      
+      // Refresh the courses list from the backend to get the latest data
+      const refreshedCourses = await djangoApi.getCourses();
+      setCourses(refreshedCourses);
+      
+      // Close dialog and reset state
       setIsDialogOpen(false);
       setEditingCourse(null);
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Error saving course:', error);
+      toast.error(`Failed to save course: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteCourse = async (course: Course) => {
+    if (!window.confirm(`Are you sure you want to delete "${course.course_name}"?`)) {
+      return;
+    }
+    
+    try {
+      await djangoApi.deleteCourse(course.id);
+      handleCourseDeleted(course.id);
+      toast.success('Course deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting course:', error);
+      toast.error(`Failed to delete course: ${error.message || 'Unknown error'}`);
     }
   };
 
   // Filter courses based on search term
   const filteredCourses = courses.filter(course => 
-    course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    course.code.toLowerCase().includes(searchTerm.toLowerCase())
+    course.course_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    course.course_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    course.department_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -100,7 +164,21 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-2"></div>
-          <p>Loading course data...</p>
+          <p>Loading course data from Django backend...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-2" />
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            Retry
+          </Button>
         </div>
       </div>
     );
@@ -130,11 +208,16 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
         </div>
       </div>
 
+      {/* Show data status */}
+      <div className="text-sm text-gray-600">
+        Found {courses.length} courses and {levels.length} academic levels
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="all">
             <ListChecks className="h-4 w-4 mr-2" />
-            All Courses
+            All Courses ({filteredCourses.length})
           </TabsTrigger>
           <TabsTrigger value="by-level">
             <Layers className="h-4 w-4 mr-2" />
@@ -145,45 +228,62 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
         <TabsContent value="all">
           <Card>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Credits</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCourses.map((course) => (
-                    <TableRow key={course.id}>
-                      <TableCell className="font-medium">{course.code}</TableCell>
-                      <TableCell>{course.name}</TableCell>
-                      <TableCell>Level {course.level}</TableCell>
-                      <TableCell>{course.credits}</TableCell>
-                      <TableCell>
-                        <Badge variant={course.is_active ? 'default' : 'secondary'}>
-                          {course.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setEditingCourse(course);
-                            setIsDialogOpen(true);
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+              {filteredCourses.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  {searchTerm ? 'No courses match your search.' : 'No courses found. Add some courses to get started.'}
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Level</TableHead>
+                      <TableHead>Credits</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCourses.map((course) => (
+                      <TableRow key={course.id}>
+                        <TableCell className="font-medium">{course.course_code}</TableCell>
+                        <TableCell>{course.course_name}</TableCell>
+                        <TableCell>{course.department_name || 'N/A'}</TableCell>
+                        <TableCell>{course.level_name || `Level ${course.level}`}</TableCell>
+                        <TableCell>{course.credits}</TableCell>
+                        <TableCell>
+                          <Badge variant={course.status === 'active' ? 'default' : 'secondary'}>
+                            {course.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingCourse(course);
+                                setIsDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteCourse(course)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -191,14 +291,17 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
         <TabsContent value="by-level">
           <LevelBasedCourseManager 
             courses={courses}
-            academicLevels={academicLevels}
+            academicLevels={levels} // Pass the correct levels data
             setCourses={setCourses}
-            onUpdate={() => {}}
+            onUpdate={() => {
+              // Refresh data when needed
+              window.location.reload();
+            }}
           />
         </TabsContent>
       </Tabs>
 
-      {/* Course Dialog */}
+      {/* Course Dialog - FIXED: Pass levels and departments */}
       <CourseDialog
         isOpen={isDialogOpen}
         onClose={() => {
@@ -207,6 +310,8 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
         }}
         onSubmit={handleSubmitCourse}
         editingCourse={editingCourse}
+        levels={levels}
+        departments={departments}
       />
     </div>
   );
