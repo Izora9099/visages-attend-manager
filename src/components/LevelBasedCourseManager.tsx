@@ -1,5 +1,5 @@
 // src/components/LevelBasedCourseManager.tsx
-// COMPLETELY FIXED component for managing courses by academic level
+// CLEANED component for managing courses by academic level - removed direct API calls
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,38 +91,8 @@ export const LevelBasedCourseManager = ({
     setSelectedLevel(defaultLevel);
   }
 
-  // 🔍 DIRECT API TEST - Let's check what the backend actually returns
-  useEffect(() => {
-    const testDirectAPICall = async () => {
-      try {
-        console.log('\n🧪 TESTING DIRECT API CALLS:');
-        const directCoursesResponse = await fetch('http://localhost:8000/api/courses/');
-        const directCoursesData = await directCoursesResponse.json();
-        console.log('📡 Direct API courses response:', directCoursesData);
-        
-        const directLevelsResponse = await fetch('http://localhost:8000/api/levels/');
-        const directLevelsData = await directLevelsResponse.json();
-        console.log('📡 Direct API levels response:', directLevelsData);
-        
-        // Check specific course details
-        if (directCoursesData && directCoursesData.length > 0) {
-          console.log('\n🔍 FIRST COURSE DETAILED ANALYSIS:');
-          const firstCourse = directCoursesData[0];
-          console.log('First course from API:', firstCourse);
-          console.log('Level field value:', firstCourse.level);
-          console.log('Level field type:', typeof firstCourse.level);
-          console.log('Is level null?', firstCourse.level === null);
-          console.log('Is level undefined?', firstCourse.level === undefined);
-        }
-      } catch (error) {
-        console.error('❌ Direct API test failed:', error);
-      }
-    };
-    
-    if (courses.length > 0 && academicLevels.length > 0) {
-      testDirectAPICall();
-    }
-  }, [courses, academicLevels]);
+  // REMOVED: Direct API test calls that were causing 401 errors
+  // The previous useEffect with testDirectAPICall has been removed
 
   // WORKAROUND: Since API returns level_name instead of level ID, let's use level_name for filtering
   const filteredCourses = courses.filter(course => {

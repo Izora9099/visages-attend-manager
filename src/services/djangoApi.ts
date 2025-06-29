@@ -1,4 +1,4 @@
-// src/services/djangoApi.ts - Fixed version that handles missing endpoints gracefully
+// src/services/djangoApi.ts - CORRECTED VERSION with all functions preserved
 
 import { UserPermissions } from '@/types/permissions';
 
@@ -12,6 +12,7 @@ class DjangoApiService {
   private baseUrl: string | null = null;
   private lastDetectionTime: number = 0;
   private readonly detectionCacheMs = 30000; // 30 seconds
+  private isRefreshing = false; // ADDED: Prevent multiple refresh attempts
 
   private readonly possibleEndpoints: ApiEndpoint[] = [
     { url: 'http://localhost:8000', name: 'Development', priority: 1 },
@@ -84,18 +85,24 @@ class DjangoApiService {
     return false;
   }
 
+  // FIXED: Enhanced makeRequest with better token handling and debugging
   private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
     const apiUrl = await this.getApiUrl();
     const url = `${apiUrl}${endpoint}`;
     
-    const defaultHeaders = {
+    // FIXED: Always get fresh token for each request with better logging
+    const token = localStorage.getItem('access_token');
+    
+    const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
 
-    const token = localStorage.getItem('access_token');
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
+      console.log(`🔑 Request to ${endpoint} - Token: ${token.substring(0, 20)}...`);
+    } else {
+      console.warn(`⚠️ Request to ${endpoint} - NO TOKEN FOUND`);
     }
 
     const config: RequestInit = {
@@ -107,39 +114,76 @@ class DjangoApiService {
     };
 
     try {
+      console.log(`📡 Making ${config.method || 'GET'} request to ${endpoint}`);
       const response = await fetch(url, config);
       return await this.handleResponse(response, endpoint);
     } catch (error: any) {
-      console.error(`API Error [${endpoint}]:`, error);
+      console.error(`❌ API Error [${endpoint}]:`, error);
       throw new Error(error.message || 'Network error occurred');
     }
   }
 
+  // FIXED: Better response handling with automatic token refresh
   private async handleResponse(response: Response, endpoint: string): Promise<any> {
+    console.log(`📨 Response from ${endpoint}: ${response.status} ${response.statusText}`);
+
     if (response.status === 401) {
-      console.warn('Unauthorized request, clearing tokens');
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      console.warn('🔒 Unauthorized request detected');
       
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      // FIXED: Try to refresh token automatically (but only once at a time)
+      if (!this.isRefreshing && endpoint !== '/auth/refresh/') {
+        this.isRefreshing = true;
+        
+        try {
+          console.log('🔄 Attempting automatic token refresh...');
+          await this.refreshToken();
+          this.isRefreshing = false;
+          
+          console.log('✅ Token refreshed, retrying original request...');
+          // Retry the original request with new token
+          return this.makeRequest(endpoint);
+        } catch (refreshError) {
+          console.error('❌ Token refresh failed:', refreshError);
+          this.isRefreshing = false;
+          
+          // Clear tokens and redirect to login
+          this.clearAuthAndRedirect();
+        }
+      } else {
+        // If already refreshing or this IS the refresh endpoint, just clear auth
+        this.clearAuthAndRedirect();
       }
+      
       throw new Error('Authentication required');
     }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.message || errorData.detail || `HTTP ${response.status}`;
-      console.error(`API Error [${endpoint}]:`, errorMessage);
+      console.error(`❌ API Error [${endpoint}]:`, errorMessage, errorData);
       throw new Error(errorMessage);
     }
 
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      return await response.json();
+      const data = await response.json();
+      console.log(`✅ Success response from ${endpoint}`);
+      return data;
     }
 
     return await response.text();
+  }
+
+  // ADDED: Centralized auth clearing
+  private clearAuthAndRedirect(): void {
+    console.warn('🧹 Clearing authentication and redirecting to login');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_data');
+    
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
   }
 
   // ============================
@@ -147,6 +191,8 @@ class DjangoApiService {
   // ============================
 
   async login(username: string, password: string): Promise<any> {
+    console.log('🔐 Attempting login for user:', username);
+    
     const response = await this.makeRequest('/auth/login/', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
@@ -155,6 +201,9 @@ class DjangoApiService {
     if (response.access) {
       localStorage.setItem('access_token', response.access);
       localStorage.setItem('refresh_token', response.refresh);
+      console.log('💾 Tokens stored successfully');
+    } else {
+      throw new Error('Login response missing access token');
     }
 
     return response;
@@ -164,6 +213,8 @@ class DjangoApiService {
     const refreshToken = localStorage.getItem('refresh_token');
     if (!refreshToken) throw new Error('No refresh token available');
 
+    console.log('🔄 Refreshing access token...');
+
     const response = await this.makeRequest('/auth/refresh/', {
       method: 'POST',
       body: JSON.stringify({ refresh: refreshToken }),
@@ -171,11 +222,18 @@ class DjangoApiService {
 
     if (response.access) {
       localStorage.setItem('access_token', response.access);
+      if (response.refresh) {
+        localStorage.setItem('refresh_token', response.refresh);
+      }
+      console.log('✅ Token refresh successful');
+    } else {
+      throw new Error('Refresh response missing access token');
     }
 
     return response;
   }
 
+  // FIXED: Single, comprehensive getCurrentUser method (removed duplicate)
   async getCurrentUser(): Promise<UserPermissions> {
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -183,37 +241,38 @@ class DjangoApiService {
     }
 
     try {
-      // First try the new /auth/user/ endpoint
-      try {
-        const response = await this.makeRequest('/auth/user/');
-        console.log('Got user data from Django endpoint:', response);
-        
-        const userData: UserPermissions = {
-          id: response.id,
-          username: response.username,
-          email: response.email || '',
-          first_name: response.first_name || '',
-          last_name: response.last_name || '',
-          name: response.first_name && response.last_name ? `${response.first_name} ${response.last_name}` : response.username,
-          phone: response.phone || '',
-          is_active: response.is_active,
-          is_staff: response.is_staff,
-          is_superuser: response.is_superuser,
-          role: response.role || (response.is_superuser ? 'superadmin' : 'staff'),
-          permissions: response.permissions || [],
-          last_login: response.last_login || '',
-          date_joined: response.date_joined || ''
-        };
+      // First try the Django user endpoint
+      console.log('👤 Fetching user data from Django endpoint...');
+      const response = await this.makeRequest('/auth/user/');
+      console.log('✅ Got user data from Django endpoint:', response);
+      
+      const userData: UserPermissions = {
+        id: response.id,
+        username: response.username,
+        email: response.email || '',
+        first_name: response.first_name || '',
+        last_name: response.last_name || '',
+        name: response.first_name && response.last_name ? `${response.first_name} ${response.last_name}` : response.username,
+        phone: response.phone || '',
+        is_active: response.is_active,
+        is_staff: response.is_staff,
+        is_superuser: response.is_superuser,
+        role: response.role || (response.is_superuser ? 'superadmin' : 'staff'),
+        permissions: response.permissions || [],
+        last_login: response.last_login || '',
+        date_joined: response.date_joined || ''
+      };
 
-        // Store user data for future use
-        localStorage.setItem('user_data', JSON.stringify(userData));
-        return userData;
-      } catch (apiError) {
-        console.warn('Django user endpoint failed, trying JWT decode:', apiError);
-        
+      // Store user data for future use
+      localStorage.setItem('user_data', JSON.stringify(userData));
+      return userData;
+    } catch (apiError: any) {
+      console.warn('⚠️ Django user endpoint failed, trying JWT decode:', apiError);
+      
+      try {
         // Fallback to JWT token decoding
         const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('Decoded JWT payload:', payload);
+        console.log('🔍 Decoded JWT payload:', payload);
         
         const userData: UserPermissions = {
           id: payload.user_id || payload.sub || 1,
@@ -232,38 +291,37 @@ class DjangoApiService {
           date_joined: payload.date_joined || ''
         };
 
-        console.log('User data from JWT:', userData);
+        console.log('✅ User data from JWT:', userData);
         localStorage.setItem('user_data', JSON.stringify(userData));
         return userData;
-      }
-    } catch (tokenError) {
-      console.warn('Could not decode JWT token:', tokenError);
-      
-      // Try to get stored user data as final fallback
-      const storedUserData = localStorage.getItem('user_data');
-      if (storedUserData) {
-        try {
-          const parsed = JSON.parse(storedUserData);
-          console.log('Using stored user data:', parsed);
-          return parsed;
-        } catch (parseError) {
-          console.error('Failed to parse stored user data:', parseError);
+      } catch (decodeError) {
+        console.error('❌ Could not decode JWT token:', decodeError);
+        
+        // Try stored user data as final fallback
+        const storedUserData = localStorage.getItem('user_data');
+        if (storedUserData) {
+          try {
+            const parsed = JSON.parse(storedUserData);
+            console.log('🔄 Using stored user data:', parsed);
+            return parsed;
+          } catch (parseError) {
+            console.error('❌ Failed to parse stored user data:', parseError);
+          }
         }
+        
+        // Clear auth and force re-login
+        this.clearAuthAndRedirect();
+        throw new Error('Could not retrieve user information. Please log in again.');
       }
-      
-      // Clear tokens and force re-login
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user_data');
-      throw new Error('Could not retrieve user information. Please log in again.');
     }
   }
 
   // Keep the logout method simple - just clear local storage
   async logout(): Promise<void> {
-    // Just clear local storage - don't make API call that might fail
+    console.log('👋 Logging out...');
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_data');
   }
 
   // ============================
@@ -351,6 +409,7 @@ class DjangoApiService {
   }
 
   async createCourse(data: any): Promise<any> {
+    console.log('📚 Creating course with data:', data);
     return this.makeRequest('/courses/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -358,6 +417,7 @@ class DjangoApiService {
   }
 
   async updateCourse(id: number, data: any): Promise<any> {
+    console.log('📝 Updating course:', id, data);
     return this.makeRequest(`/courses/${id}/`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -566,272 +626,237 @@ class DjangoApiService {
       method: 'POST',
     });
   }
-  // Add these methods to your existing DjangoApiService class in djangoApi.ts
-// Place them before the closing brace of the class
 
-// ============================
-// 👥 ADMIN USER MANAGEMENT
-// ============================
+  // ============================
+  // 👥 ADMIN USER MANAGEMENT
+  // ============================
 
-async getAdminUsers(): Promise<any[]> {
-  try {
-    return await this.makeRequest('/admin-users/');
-  } catch (error) {
-    console.warn('Admin users endpoint not available');
-    return [];
-  }
-}
-
-async createAdminUser(userData: any): Promise<any> {
-  try {
-    return await this.makeRequest('/admin-users/create/', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-  } catch (error) {
-    console.error('Failed to create admin user:', error);
-    throw error;
-  }
-}
-
-async updateAdminUser(userId: number, userData: any): Promise<any> {
-  try {
-    return await this.makeRequest(`/admin-users/${userId}/`, {
-      method: 'PUT',
-      body: JSON.stringify(userData),
-    });
-  } catch (error) {
-    console.error('Failed to update admin user:', error);
-    throw error;
-  }
-}
-
-async deleteAdminUser(userId: number): Promise<any> {
-  try {
-    return await this.makeRequest(`/admin-users/${userId}/delete/`, {
-      method: 'DELETE',
-    });
-  } catch (error) {
-    console.error('Failed to delete admin user:', error);
-    throw error;
-  }
-}
-
-// ============================
-// 🔒 SECURITY MANAGEMENT
-// ============================
-
-async getUserActivities(filters: any = {}): Promise<any[]> {
-  try {
-    const params = new URLSearchParams();
-    
-    if (filters.days) params.append('days', filters.days.toString());
-    if (filters.user && filters.user !== 'all') params.append('user', filters.user);
-    if (filters.action && filters.action !== 'all') params.append('action', filters.action);
-    if (filters.status && filters.status !== 'all') params.append('status', filters.status);
-    
-    const queryString = params.toString();
-    const url = queryString ? `/security/activities/?${queryString}` : '/security/activities/';
-    
-    return await this.makeRequest(url);
-  } catch (error) {
-    console.warn('User activities endpoint not available');
-    return [];
-  }
-}
-
-async getLoginAttempts(filters: any = {}): Promise<any[]> {
-  try {
-    const params = new URLSearchParams();
-    if (filters.days) params.append('days', filters.days.toString());
-    
-    const queryString = params.toString();
-    const url = queryString ? `/security/login-attempts/?${queryString}` : '/security/login-attempts/';
-    
-    return await this.makeRequest(url);
-  } catch (error) {
-    console.warn('Login attempts endpoint not available');
-    return [];
-  }
-}
-
-async getActiveSessions(): Promise<any[]> {
-  try {
-    return await this.makeRequest('/security/active-sessions/');
-  } catch (error) {
-    console.warn('Active sessions endpoint not available');
-    return [];
-  }
-}
-
-async getSecurityStatistics(filters: any = {}): Promise<any> {
-  try {
-    const params = new URLSearchParams();
-    if (filters.days) params.append('days', filters.days.toString());
-    
-    const queryString = params.toString();
-    const url = queryString ? `/security/statistics/?${queryString}` : '/security/statistics/';
-    
-    return await this.makeRequest(url);
-  } catch (error) {
-    console.warn('Security statistics endpoint not available');
-    return {
-      total_login_attempts: 0,
-      successful_logins: 0,
-      failed_logins: 0,
-      unique_users: 0,
-      suspicious_activities: 0,
-      blocked_ips: 0
-    };
-  }
-}
-
-async getSecuritySettings(): Promise<any> {
-  try {
-    return await this.makeRequest('/security/settings/');
-  } catch (error) {
-    console.warn('Security settings endpoint not available');
-    return {
-      min_password_length: 8,
-      require_special_chars: false,
-      enable_2fa: false,
-      max_login_attempts: 5,
-      lockout_duration: 30,
-      session_timeout: 60,
-      log_all_activities: true
-    };
-  }
-}
-
-async updateSecuritySettings(settings: any): Promise<any> {
-  try {
-    return await this.makeRequest('/security/settings/update/', {
-      method: 'POST',
-      body: JSON.stringify(settings),
-    });
-  } catch (error) {
-    console.error('Failed to update security settings:', error);
-    throw error;
-  }
-}
-
-async terminateSession(sessionId: string): Promise<any> {
-  try {
-    return await this.makeRequest(`/security/sessions/${sessionId}/terminate/`, {
-      method: 'POST',
-    });
-  } catch (error) {
-    console.error('Failed to terminate session:', error);
-    throw error;
-  }
-}
-
-// ============================
-// ⚙️ SYSTEM SETTINGS
-// ============================
-
-async getSystemSettings(): Promise<any> {
-  try {
-    return await this.makeRequest('/system/settings/');
-  } catch (error) {
-    console.warn('System settings endpoint not available');
-    return {
-      school_name: 'Face Recognition Attendance System',
-      academic_year: '2024-2025',
-      semester: 'Fall',
-      maintenance_mode: false,
-      allow_registration: true,
-      email_notifications: true,
-      backup_frequency: 'daily',
-      max_file_size: 10
-    };
-  }
-}
-
-async updateSystemSettings(settings: any): Promise<any> {
-  try {
-    return await this.makeRequest('/system/settings/update/', {
-      method: 'POST',
-      body: JSON.stringify(settings),
-    });
-  } catch (error) {
-    console.error('Failed to update system settings:', error);
-    throw error;
-  }
-}
-
-async testEmailSettings(): Promise<any> {
-  try {
-    return await this.makeRequest('/system/test-email/', {
-      method: 'POST',
-    });
-  } catch (error) {
-    console.error('Failed to test email settings:', error);
-    throw error;
-  }
-}
-
-async createBackup(): Promise<any> {
-  try {
-    return await this.makeRequest('/system/backup/create/', {
-      method: 'POST',
-    });
-  } catch (error) {
-    console.error('Failed to create backup:', error);
-    throw error;
-  }
-}
-
-// ============================
-// 🔄 AUTHENTICATION HELPERS
-// ============================
-
-async getCurrentUser(): Promise<any> {
-  try {
-    return await this.makeRequest('/auth/user/');
-  } catch (error) {
-    console.warn('Current user endpoint not available, using fallback');
-    // Return a basic user object for testing
-    return {
-      id: 1,
-      username: 'admin',
-      email: 'admin@example.com',
-      is_superuser: true,
-      role: 'superadmin',
-      permissions: [
-        'view_students', 'manage_students', 'view_attendance', 
-        'edit_attendance', 'view_reports', 'generate_reports', 
-        'manage_users', 'system_settings'
-      ]
-    };
-  }
-}
-
-async refreshToken(): Promise<any> {
-  try {
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+  async getAdminUsers(): Promise<any[]> {
+    try {
+      return await this.makeRequest('/admin-users/');
+    } catch (error) {
+      console.warn('Admin users endpoint not available');
+      return [];
     }
-
-    const response = await this.makeRequest('/auth/refresh/', {
-      method: 'POST',
-      body: JSON.stringify({ refresh: refreshToken }),
-    });
-
-    if (response.access) {
-      localStorage.setItem('access_token', response.access);
-      if (response.refresh) {
-        localStorage.setItem('refresh_token', response.refresh);
-      }
-    }
-
-    return response;
-  } catch (error) {
-    console.error('Failed to refresh token:', error);
-    throw error;
   }
-}
+
+  async createAdminUser(userData: any): Promise<any> {
+    try {
+      return await this.makeRequest('/admin-users/create/', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      });
+    } catch (error) {
+      console.error('Failed to create admin user:', error);
+      throw error;
+    }
+  }
+
+  async updateAdminUser(userId: number, userData: any): Promise<any> {
+    try {
+      return await this.makeRequest(`/admin-users/${userId}/`, {
+        method: 'PUT',
+        body: JSON.stringify(userData),
+      });
+    } catch (error) {
+      console.error('Failed to update admin user:', error);
+      throw error;
+    }
+  }
+
+  async deleteAdminUser(userId: number): Promise<any> {
+    try {
+      return await this.makeRequest(`/admin-users/${userId}/delete/`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete admin user:', error);
+      throw error;
+    }
+  }
+
+  // ============================
+  // 🔒 SECURITY MANAGEMENT
+  // ============================
+
+  async getUserActivities(filters: any = {}): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters.days) params.append('days', filters.days.toString());
+      if (filters.user && filters.user !== 'all') params.append('user', filters.user);
+      if (filters.action && filters.action !== 'all') params.append('action', filters.action);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+      
+      const queryString = params.toString();
+      const url = queryString ? `/security/activities/?${queryString}` : '/security/activities/';
+      
+      return await this.makeRequest(url);
+    } catch (error) {
+      console.warn('User activities endpoint not available');
+      return [];
+    }
+  }
+
+  async getLoginAttempts(filters: any = {}): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      if (filters.days) params.append('days', filters.days.toString());
+      
+      const queryString = params.toString();
+      const url = queryString ? `/security/login-attempts/?${queryString}` : '/security/login-attempts/';
+      
+      return await this.makeRequest(url);
+    } catch (error) {
+      console.warn('Login attempts endpoint not available');
+      return [];
+    }
+  }
+
+  async getActiveSessions(): Promise<any[]> {
+    try {
+      return await this.makeRequest('/security/active-sessions/');
+    } catch (error) {
+      console.warn('Active sessions endpoint not available');
+      return [];
+    }
+  }
+
+  async getSecurityStatistics(filters: any = {}): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      if (filters.days) params.append('days', filters.days.toString());
+      
+      const queryString = params.toString();
+      const url = queryString ? `/security/statistics/?${queryString}` : '/security/statistics/';
+      
+      return await this.makeRequest(url);
+    } catch (error) {
+      console.warn('Security statistics endpoint not available');
+      return {
+        total_login_attempts: 0,
+        successful_logins: 0,
+        failed_logins: 0,
+        unique_users: 0,
+        suspicious_activities: 0,
+        blocked_ips: 0
+      };
+    }
+  }
+
+  async getSecuritySettings(): Promise<any> {
+    try {
+      return await this.makeRequest('/security/settings/');
+    } catch (error) {
+      console.warn('Security settings endpoint not available');
+      return {
+        min_password_length: 8,
+        require_special_chars: false,
+        enable_2fa: false,
+        max_login_attempts: 5,
+        lockout_duration: 30,
+        session_timeout: 60,
+        log_all_activities: true
+      };
+    }
+  }
+
+  async updateSecuritySettings(settings: any): Promise<any> {
+    try {
+      return await this.makeRequest('/security/settings/update/', {
+        method: 'POST',
+        body: JSON.stringify(settings),
+      });
+    } catch (error) {
+      console.error('Failed to update security settings:', error);
+      throw error;
+    }
+  }
+
+  async terminateSession(sessionId: string): Promise<any> {
+    try {
+      return await this.makeRequest(`/security/sessions/${sessionId}/terminate/`, {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Failed to terminate session:', error);
+      throw error;
+    }
+  }
+
+  // ============================
+  // ⚙️ SYSTEM SETTINGS
+  // ============================
+
+  async getSystemSettings(): Promise<any> {
+    try {
+      return await this.makeRequest('/system/settings/');
+    } catch (error) {
+      console.warn('System settings endpoint not available');
+      return {
+        school_name: 'Face Recognition Attendance System',
+        academic_year: '2024-2025',
+        semester: 'Fall',
+        maintenance_mode: false,
+        allow_registration: true,
+        email_notifications: true,
+        backup_frequency: 'daily',
+        max_file_size: 10
+      };
+    }
+  }
+
+  async updateSystemSettings(settings: any): Promise<any> {
+    try {
+      return await this.makeRequest('/system/settings/update/', {
+        method: 'POST',
+        body: JSON.stringify(settings),
+      });
+    } catch (error) {
+      console.error('Failed to update system settings:', error);
+      throw error;
+    }
+  }
+
+  async testEmailSettings(): Promise<any> {
+    try {
+      return await this.makeRequest('/system/test-email/', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Failed to test email settings:', error);
+      throw error;
+    }
+  }
+
+  async createBackup(): Promise<any> {
+    try {
+      return await this.makeRequest('/system/backup/create/', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Failed to create backup:', error);
+      throw error;
+    }
+  }
+
+  // ============================
+  // 🔧 DEBUG METHODS
+  // ============================
+
+  getAuthStatus(): any {
+    const token = localStorage.getItem('access_token');
+    const refresh = localStorage.getItem('refresh_token');
+    const userData = localStorage.getItem('user_data');
+
+    return {
+      hasToken: !!token,
+      hasRefreshToken: !!refresh,
+      hasUserData: !!userData,
+      tokenLength: token?.length || 0,
+      tokenPreview: token ? token.substring(0, 50) + '...' : 'None'
+    };
+  }
 }
 
 export const djangoApi = new DjangoApiService();

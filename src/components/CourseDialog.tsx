@@ -1,5 +1,5 @@
 // src/components/CourseDialog.tsx
-// Fixed CourseDialog component to work with Django API types and fetch data from database
+// Fixed CourseDialog component to properly handle form validation and submission
 
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -7,18 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { X, Loader2 } from 'lucide-react';
-// FIXED: Import correct types and API
 import { Course, Level, Department } from '@/types/index';
 import { djangoApi } from '@/services/djangoApi';
 
 interface CourseDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (course: any) => void; // Accept any for flexibility
+  onSubmit: (course: any) => void;
   editingCourse?: Course | null;
 }
 
@@ -28,14 +26,14 @@ export const CourseDialog = ({
   onSubmit, 
   editingCourse
 }: CourseDialogProps) => {
-  // FIXED: Use correct field names and ensure all values are never undefined
+  // FIXED: Initialize with null instead of 0 for foreign keys
   const [formData, setFormData] = useState({
     course_code: '',
     course_name: '',
     credits: 3,
     description: '',
-    department: 0, // Use number for department ID
-    level: 0, // Use number for level ID
+    department: null as number | null, // Use null instead of 0
+    level: null as number | null, // Use null instead of 0
     semester: 1,
     status: 'active' as const,
     specializations: [] as number[],
@@ -95,8 +93,8 @@ export const CourseDialog = ({
         course_name: editingCourse.course_name || '',
         credits: editingCourse.credits || 3,
         description: editingCourse.description || '',
-        department: editingCourse.department || 0,
-        level: editingCourse.level || 0,
+        department: editingCourse.department || null,
+        level: editingCourse.level || null,
         semester: editingCourse.semester || 1,
         status: editingCourse.status || 'active',
         specializations: editingCourse.specializations || [],
@@ -104,14 +102,14 @@ export const CourseDialog = ({
       });
     } else {
       // Reset form for new course
-      console.log('➕ Creating new course');
+      console.log('➕ Creating new course - resetting form');
       setFormData({
         course_code: '',
         course_name: '',
         credits: 3,
         description: '',
-        department: 0,
-        level: 0,
+        department: null,
+        level: null,
         semester: 1,
         status: 'active',
         specializations: [],
@@ -121,6 +119,7 @@ export const CourseDialog = ({
     setFormErrors({});
   }, [editingCourse, isOpen]);
 
+  // FIXED: Improved validation with proper null checks
   const validateForm = () => {
     const errors: Record<string, string> = {};
     
@@ -133,6 +132,7 @@ export const CourseDialog = ({
     if (formData.credits < 1 || formData.credits > 10) {
       errors.credits = 'Credits must be between 1 and 10';
     }
+    // FIXED: Check for null instead of 0
     if (!formData.department) {
       errors.department = 'Department is required';
     }
@@ -148,6 +148,7 @@ export const CourseDialog = ({
     e.preventDefault();
     
     if (!validateForm()) {
+      console.log('❌ Form validation failed:', formErrors);
       return;
     }
     
@@ -155,8 +156,24 @@ export const CourseDialog = ({
       setLoading(true);
       console.log('💾 Submitting course data:', formData);
       
+      // FIXED: Ensure we send valid data to the backend
+      const submitData = {
+        course_code: formData.course_code.trim(),
+        course_name: formData.course_name.trim(),
+        credits: formData.credits,
+        description: formData.description.trim(),
+        department: formData.department, // This will be a number or null
+        level: formData.level, // This will be a number or null
+        semester: formData.semester,
+        status: formData.status,
+        specializations: formData.specializations,
+        teachers: formData.teachers
+      };
+      
+      console.log('📤 Final submit data:', submitData);
+      
       // Submit the form data to parent component
-      await onSubmit(formData);
+      await onSubmit(submitData);
       
       // Reset form and close dialog
       setFormData({
@@ -164,13 +181,15 @@ export const CourseDialog = ({
         course_name: '',
         credits: 3,
         description: '',
-        department: 0,
-        level: 0,
+        department: null,
+        level: null,
         semester: 1,
         status: 'active',
         specializations: [],
         teachers: []
       });
+      
+      onClose();
       
     } catch (error) {
       console.error('❌ Error submitting course:', error);
@@ -179,11 +198,13 @@ export const CourseDialog = ({
     }
   };
 
-  // FIXED: Safe update functions that ensure controlled inputs
+  // FIXED: Safe update functions that handle null values properly
   const updateField = (field: string, value: any) => {
+    console.log(`🔄 Updating ${field} to:`, value);
+    
     setFormData(prev => ({
       ...prev,
-      [field]: value ?? (typeof prev[field as keyof typeof prev] === 'number' ? 0 : '')
+      [field]: value
     }));
     
     // Clear error for this field
@@ -235,7 +256,7 @@ export const CourseDialog = ({
                   min="1"
                   max="10"
                   value={formData.credits}
-                  onChange={(e) => updateField('credits', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateField('credits', parseInt(e.target.value) || 1)}
                   className={formErrors.credits ? 'border-red-500' : ''}
                 />
                 {formErrors.credits && (
@@ -264,8 +285,8 @@ export const CourseDialog = ({
               <div>
                 <Label htmlFor="department">Department *</Label>
                 <Select
-                  value={formData.department.toString()}
-                  onValueChange={(value) => updateField('department', parseInt(value) || 0)}
+                  value={formData.department ? formData.department.toString() : ""}
+                  onValueChange={(value) => updateField('department', parseInt(value))}
                 >
                   <SelectTrigger className={formErrors.department ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select Department" />
@@ -285,8 +306,8 @@ export const CourseDialog = ({
               <div>
                 <Label htmlFor="level">Level *</Label>
                 <Select
-                  value={formData.level.toString()}
-                  onValueChange={(value) => updateField('level', parseInt(value) || 0)}
+                  value={formData.level ? formData.level.toString() : ""}
+                  onValueChange={(value) => updateField('level', parseInt(value))}
                 >
                   <SelectTrigger className={formErrors.level ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select Level" />
@@ -311,7 +332,7 @@ export const CourseDialog = ({
                 <Label htmlFor="semester">Semester</Label>
                 <Select
                   value={formData.semester.toString()}
-                  onValueChange={(value) => updateField('semester', parseInt(value) || 1)}
+                  onValueChange={(value) => updateField('semester', parseInt(value))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -348,28 +369,29 @@ export const CourseDialog = ({
                 id="description"
                 value={formData.description}
                 onChange={(e) => updateField('description', e.target.value)}
-                placeholder="Brief course description..."
+                placeholder="Course description (optional)"
                 rows={3}
               />
             </div>
 
-            {/* Debug Info */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="bg-gray-50 p-3 rounded text-xs">
-                <strong>Debug:</strong> Departments: {departments.length}, Levels: {levels.length}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            {/* Submit Buttons */}
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={loading}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button
+                type="submit"
+                disabled={loading}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Saving...
+                    {editingCourse ? 'Updating...' : 'Creating...'}
                   </>
                 ) : (
                   editingCourse ? 'Update Course' : 'Create Course'
