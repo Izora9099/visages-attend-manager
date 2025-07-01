@@ -1,4 +1,4 @@
-// Complete Students.tsx - Error Free with Proper Backend Integration
+// Modified Students.tsx - Using Separate StudentCreateDialog Component
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Plus, Search, Edit, Trash2, Eye, AlertCircle, RefreshCw, Users, ChevronLeft, ChevronRight, Camera, Upload, RotateCcw } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Eye, AlertCircle, RefreshCw, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { djangoApi } from "@/services/djangoApi";
+import { StudentCreateDialog } from "./StudentCreateDialog";
 
 interface Student {
   id: number;
@@ -79,7 +80,6 @@ interface StudentFormData {
   gender: string;
   emergency_contact: string;
   emergency_phone: string;
-  face_image?: File | null;
   face_encoding_model: string;
 }
 
@@ -119,7 +119,7 @@ export const Students = () => {
   // Filters
   const [filters, setFilters] = useState<Filters>({});
 
-  // Form state
+  // Edit form state
   const [formData, setFormData] = useState<StudentFormData>({
     first_name: "",
     last_name: "",
@@ -134,20 +134,11 @@ export const Students = () => {
     gender: "",
     emergency_contact: "",
     emergency_phone: "",
-    face_image: null,
     face_encoding_model: "cnn"
   });
 
   const [formErrors, setFormErrors] = useState<Partial<StudentFormData>>({});
   const [formLoading, setFormLoading] = useState(false);
-
-  // Face capture states
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [cameraError, setCameraError] = useState("");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   // Dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -165,15 +156,6 @@ export const Students = () => {
   useEffect(() => {
     loadStudents(pagination.page);
   }, [filters]);
-
-  // Cleanup camera when component unmounts
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
 
   const loadInitialData = async () => {
     try {
@@ -222,16 +204,6 @@ export const Students = () => {
       };
       
       const response = await djangoApi.getStudents(params);
-      
-      // Debug: Log the actual response to see what backend returns
-      console.log('Students API response:', response);
-      if (Array.isArray(response) && response.length > 0) {
-        console.log('First student object:', response[0]);
-        console.log('Available fields:', Object.keys(response[0]));
-      } else if (response?.results?.length > 0) {
-        console.log('First student object:', response.results[0]);
-        console.log('Available fields:', Object.keys(response.results[0]));
-      }
       
       // Handle different response formats and validate data
       const studentsData = Array.isArray(response) ? response : response?.results || [];
@@ -323,7 +295,7 @@ export const Students = () => {
     setPagination(prev => ({ ...prev, page: 1 })); // Reset to first page when filtering
   };
 
-  const resetForm = () => {
+  const resetEditForm = () => {
     setFormData({
       first_name: "",
       last_name: "",
@@ -338,15 +310,139 @@ export const Students = () => {
       gender: "",
       emergency_contact: "",
       emergency_phone: "",
-      face_image: null,
       face_encoding_model: "cnn"
     });
     setFormErrors({});
-    setCapturedImage(null);
-    stopCamera();
   };
 
-  const validateForm = (): boolean => {
+  // Handle data from StudentCreateDialog and convert to backend format
+  const handleCreateStudentFromDialog = async (studentData: StudentFormData & { face_image: File }) => {
+    try {
+      setLoading(true);
+      setError("");
+      
+      console.log("Student data received:", studentData);
+      console.log("Available departments:", departments);
+      console.log("Available specializations:", specializations);
+      console.log("Available levels:", levels);
+      
+      // Validate academic structure before sending
+      const selectedDepartment = departments.find(d => d.id === studentData.department);
+      const selectedLevel = levels.find(l => l.id === studentData.level);
+      let selectedSpecialization = null;
+      
+      if (studentData.specialization && studentData.specialization > 0) {
+        selectedSpecialization = specializations.find(s => s.id === studentData.specialization);
+        if (!selectedSpecialization) {
+          throw new Error(`Invalid specialization ID: ${studentData.specialization}`);
+        }
+        // Check if specialization belongs to the selected department
+        if (selectedSpecialization.department !== studentData.department) {
+          throw new Error(`Specialization ${selectedSpecialization.specialization_name} does not belong to the selected department`);
+        }
+      }
+      
+      if (!selectedDepartment) {
+        throw new Error(`Invalid department ID: ${studentData.department}. Available departments: ${departments.map(d => `${d.id}:${d.department_name}`).join(', ')}`);
+      }
+      
+      if (!selectedLevel) {
+        throw new Error(`Invalid level ID: ${studentData.level}. Available levels: ${levels.map(l => `${l.id}:${l.level_name}`).join(', ')}`);
+      }
+      
+      console.log("Validation passed:");
+      console.log("- Selected Department:", selectedDepartment);
+      console.log("- Selected Level:", selectedLevel);
+      console.log("- Selected Specialization:", selectedSpecialization);
+      
+      // Convert StudentCreateDialog data format to backend format
+      const formDataToSend = new FormData();
+      
+      // Add all fields in the format expected by the backend (matching the working version)
+      formDataToSend.append('first_name', studentData.first_name);
+      formDataToSend.append('last_name', studentData.last_name);
+      formDataToSend.append('matric_number', studentData.matric_number);
+      formDataToSend.append('email', studentData.email);
+      formDataToSend.append('phone', studentData.phone || '');
+      formDataToSend.append('address', studentData.address || '');
+      
+      // ⚠️ CRITICAL: Use the validated IDs
+      formDataToSend.append('department_id', selectedDepartment.id.toString());
+      if (selectedSpecialization) {
+        formDataToSend.append('specialization_id', selectedSpecialization.id.toString());
+      }
+      formDataToSend.append('level_id', selectedLevel.id.toString());
+      
+      // Add optional fields
+      if (studentData.date_of_birth) formDataToSend.append('date_of_birth', studentData.date_of_birth);
+      if (studentData.gender) formDataToSend.append('gender', studentData.gender);
+      if (studentData.emergency_contact) formDataToSend.append('emergency_contact', studentData.emergency_contact);
+      if (studentData.emergency_phone) formDataToSend.append('emergency_phone', studentData.emergency_phone);
+      if (studentData.face_encoding_model) formDataToSend.append('face_encoding_model', studentData.face_encoding_model);
+      
+      // Add face image - this is required for the register-student endpoint
+      if (studentData.face_image) {
+        console.log("Face image file:", studentData.face_image);
+        formDataToSend.append('image', studentData.face_image);
+      } else {
+        throw new Error("Face image is required for student registration");
+      }
+      
+      // Debug: Log all FormData entries
+      console.log("FormData entries being sent:");
+      for (let [key, value] of formDataToSend.entries()) {
+        if (key === 'image') {
+          console.log(`${key}:`, `File(${value.name}, ${value.size} bytes, ${value.type})`);
+        } else {
+          console.log(`${key}:`, value);
+        }
+      }
+      
+      // Use the register-student endpoint that handles face processing
+      const apiUrl = await djangoApi.getApiUrl();
+      const endpointUrl = `${apiUrl.replace('/api', '')}/api/register-student/`;
+      console.log("Sending request to:", endpointUrl);
+      
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        body: formDataToSend,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          // Note: Don't set Content-Type header when using FormData - browser sets it automatically
+        }
+      });
+      
+      console.log("Response status:", response.status);
+      
+      // Try to get response text first to see what the server is returning
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+      
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse response as JSON:", parseError);
+        throw new Error(`Server returned invalid JSON. Status: ${response.status}, Response: ${responseText}`);
+      }
+      
+      if (response.ok && result.status === 'success') {
+        setSuccess("Student created successfully with facial recognition!");
+        loadStudents(pagination.page); // Refresh the list
+      } else {
+        console.error("Server error:", result);
+        setError(result.message || result.error || `Server error: ${response.status} - ${responseText}`);
+      }
+      
+    } catch (err: any) {
+      console.error("Failed to create student:", err);
+      setError("Failed to create student: " + (err.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateEditForm = (): boolean => {
     const errors: Partial<StudentFormData> = {};
     
     if (!formData.first_name.trim()) errors.first_name = "First name is required";
@@ -357,81 +453,8 @@ export const Students = () => {
     if (!formData.department) errors.department = "Department is required";
     if (!formData.level) errors.level = "Level is required";
     
-    // Only require face image for new students, not editing
-    if (!editingStudent && !formData.face_image && !capturedImage) {
-      errors.face_image = "Face image is required for registration";
-    }
-    
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
-
-  const handleCreateStudent = async () => {
-    if (!validateForm()) return;
-    
-    try {
-      setFormLoading(true);
-      setError("");
-      
-      // Prepare FormData for file upload
-      const formDataToSend = new FormData();
-      
-      // Add all text fields
-      formDataToSend.append('first_name', formData.first_name);
-      formDataToSend.append('last_name', formData.last_name);
-      formDataToSend.append('matric_number', formData.matric_number);
-      formDataToSend.append('email', formData.email);
-      formDataToSend.append('phone', formData.phone);
-      formDataToSend.append('address', formData.address);
-      formDataToSend.append('department_id', formData.department.toString());
-      if (formData.specialization) {
-        formDataToSend.append('specialization_id', formData.specialization.toString());
-      }
-      formDataToSend.append('level_id', formData.level.toString());
-      
-      // Add optional fields
-      if (formData.date_of_birth) formDataToSend.append('date_of_birth', formData.date_of_birth);
-      if (formData.gender) formDataToSend.append('gender', formData.gender);
-      if (formData.emergency_contact) formDataToSend.append('emergency_contact', formData.emergency_contact);
-      if (formData.emergency_phone) formDataToSend.append('emergency_phone', formData.emergency_phone);
-      
-      // Add face image
-      if (formData.face_image) {
-        formDataToSend.append('image', formData.face_image);
-      } else if (capturedImage) {
-        // Convert base64 to blob
-        const response = await fetch(capturedImage);
-        const blob = await response.blob();
-        formDataToSend.append('image', blob, 'captured_face.jpg');
-      }
-      
-      // Use the register-student endpoint that handles face processing
-      const apiUrl = await djangoApi.getApiUrl();
-      const response = await fetch(`${apiUrl.replace('/api', '')}/api/register-student/`, {
-        method: 'POST',
-        body: formDataToSend,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
-      
-      const result = await response.json();
-      
-      if (result.status === 'success') {
-        setSuccess("Student created successfully with facial recognition!");
-        setIsCreateDialogOpen(false);
-        resetForm();
-        loadStudents(pagination.page);
-      } else {
-        setError(result.message || "Failed to create student");
-      }
-      
-    } catch (err: any) {
-      console.error("Failed to create student:", err);
-      setError("Failed to create student: " + (err.message || "Unknown error"));
-    } finally {
-      setFormLoading(false);
-    }
   };
 
   const handleEditStudent = (student: Student) => {
@@ -450,14 +473,13 @@ export const Students = () => {
       gender: student.gender || '',
       emergency_contact: student.emergency_contact || '',
       emergency_phone: student.emergency_phone || '',
-      face_image: null,
       face_encoding_model: student.face_encoding_model || 'cnn'
     });
     setIsEditDialogOpen(true);
   };
 
   const handleUpdateStudent = async () => {
-    if (!validateForm() || !editingStudent) return;
+    if (!validateEditForm() || !editingStudent) return;
     
     try {
       setFormLoading(true);
@@ -485,7 +507,7 @@ export const Students = () => {
       setSuccess("Student updated successfully!");
       setIsEditDialogOpen(false);
       setEditingStudent(null);
-      resetForm();
+      resetEditForm();
       
       // Refresh the list
       loadStudents(pagination.page);
@@ -557,84 +579,6 @@ export const Students = () => {
   const handlePageChange = (newPage: number) => {
     setPagination(prev => ({ ...prev, page: newPage }));
     loadStudents(newPage);
-  };
-
-  // Face capture functions
-  const startCamera = async () => {
-    try {
-      setCameraError("");
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: 640, 
-          height: 480,
-          facingMode: 'user' // Front camera
-        } 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsCameraOpen(true);
-      }
-    } catch (err: any) {
-      console.error("Camera access error:", err);
-      setCameraError("Unable to access camera. Please ensure camera permissions are granted.");
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsCameraOpen(false);
-    setCameraError("");
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
-        
-        // Convert to blob and store
-        canvas.toBlob((blob) => {
-          if (blob) {
-            setFormData(prev => ({ ...prev, face_image: new File([blob], 'face_capture.jpg', { type: 'image/jpeg' }) }));
-            setCapturedImage(canvas.toDataURL('image/jpeg'));
-            stopCamera();
-          }
-        }, 'image/jpeg', 0.8);
-      }
-    }
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.type.startsWith('image/')) {
-        setFormData(prev => ({ ...prev, face_image: file }));
-        
-        // Create preview
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setCapturedImage(e.target?.result as string);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        setError("Please select a valid image file");
-      }
-    }
-  };
-
-  const clearCapturedImage = () => {
-    setCapturedImage(null);
-    setFormData(prev => ({ ...prev, face_image: null }));
   };
 
   // Safe student rendering with error boundary
@@ -733,7 +677,7 @@ export const Students = () => {
     }
   };
 
-  const renderStudentForm = () => (
+  const renderEditForm = () => (
     <div className="space-y-4 max-h-[60vh] overflow-y-auto">
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -929,96 +873,6 @@ export const Students = () => {
         </div>
       </div>
 
-      {/* Face Image Section */}
-      <div className="border-t pt-4">
-        <Label>Face Image {!editingStudent && '*'}</Label>
-        <div className="mt-2 space-y-4">
-          {capturedImage ? (
-            <div className="relative">
-              <img
-                src={capturedImage}
-                alt="Captured face"
-                className="w-32 h-32 object-cover rounded-lg border"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={clearCapturedImage}
-                className="absolute top-2 right-2"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex space-x-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={startCamera}
-                  disabled={isCameraOpen}
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  {isCameraOpen ? "Camera Active" : "Take Photo"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => document.getElementById('face-upload')?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Photo
-                </Button>
-              </div>
-              
-              <input
-                id="face-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-          )}
-
-          {/* Camera Interface */}
-          {isCameraOpen && (
-            <div className="space-y-4">
-              <div className="relative">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full max-w-md rounded-lg border"
-                />
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
-              <div className="flex space-x-2">
-                <Button type="button" onClick={capturePhoto}>
-                  <Camera className="h-4 w-4 mr-2" />
-                  Capture
-                </Button>
-                <Button type="button" variant="outline" onClick={stopCamera}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {cameraError && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{cameraError}</AlertDescription>
-            </Alert>
-          )}
-
-          {formErrors.face_image && (
-            <p className="text-sm text-red-500">{formErrors.face_image}</p>
-          )}
-        </div>
-      </div>
-
       <div>
         <Label htmlFor="face_encoding_model">Face Recognition Model</Label>
         <Select 
@@ -1046,42 +900,10 @@ export const Students = () => {
           <Users className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Students Management</h1>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Student
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Add New Student</DialogTitle>
-            </DialogHeader>
-            {renderStudentForm()}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
-              <Button 
-                variant="outline" 
-                onClick={() => setIsCreateDialogOpen(false)}
-                disabled={formLoading}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreateStudent} 
-                disabled={formLoading}
-              >
-                {formLoading ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Student"
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Student
+        </Button>
       </div>
 
       {/* Messages */}
@@ -1294,20 +1116,30 @@ export const Students = () => {
         </CardContent>
       </Card>
 
+      {/* StudentCreateDialog Component */}
+      <StudentCreateDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onSave={handleCreateStudentFromDialog}
+        departments={departments}
+        specializations={specializations}
+        levels={levels}
+      />
+
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Edit Student</DialogTitle>
           </DialogHeader>
-          {renderStudentForm()}
+          {renderEditForm()}
           <div className="flex justify-end space-x-2 pt-4 border-t">
             <Button 
               variant="outline" 
               onClick={() => {
                 setIsEditDialogOpen(false);
                 setEditingStudent(null);
-                resetForm();
+                resetEditForm();
               }}
               disabled={formLoading}
             >

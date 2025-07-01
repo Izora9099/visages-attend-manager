@@ -1,216 +1,180 @@
-// Timetable API service with dummy data
-import { Course, TimeSlot, Room, TimetableEntry, AcademicLevel, SessionInfo } from '@/types/timetable';
+// Replace ALL content in src/services/timetableApi.ts with this:
 
-// Dummy data
-const DUMMY_COURSES: Course[] = [
-  {
-    id: 1,
-    code: 'CSC101',
-    name: 'Introduction to Computer Science',
-    credits: 3,
-    department: 'Computer Science',
-    level: '100',
-    description: 'Basic concepts of computer science',
-    prerequisites: [],
-    is_active: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: 2,
-    code: 'MTH201',
-    name: 'Calculus I',
-    credits: 4,
-    department: 'Mathematics',
-    level: '200',
-    description: 'Differential calculus',
-    prerequisites: ['MTH101'],
-    is_active: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: 3,
-    code: 'PHY301',
-    name: 'Quantum Physics',
-    credits: 3,
-    department: 'Physics',
-    level: '300',
-    description: 'Introduction to quantum mechanics',
-    prerequisites: ['PHY201', 'MTH201'],
-    is_active: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
+const API_BASE_URL = 'http://localhost:8000';
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('accessToken');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': token ? `Bearer ${token}` : '',
+  };
+};
+
+const handleResponse = async (response: Response) => {
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Network error' }));
+    throw new Error(error.message || `HTTP ${response.status}`);
   }
-];
-
-const DUMMY_TIMESLOTS: TimeSlot[] = [
-  { id: 1, day_of_week: 0, start_time: '08:00', end_time: '10:00', duration_minutes: 120 },
-  { id: 2, day_of_week: 0, start_time: '10:30', end_time: '12:30', duration_minutes: 120 },
-  { id: 3, day_of_week: 1, start_time: '08:00', end_time: '10:00', duration_minutes: 120 },
-  { id: 4, day_of_week: 1, start_time: '14:00', end_time: '16:00', duration_minutes: 120 },
-  { id: 5, day_of_week: 2, start_time: '08:00', end_time: '10:00', duration_minutes: 120 },
-];
-
-const DUMMY_ROOMS: Room[] = [
-  {
-    id: 1,
-    name: 'Room A101',
-    capacity: 50,
-    building: 'Academic Block A',
-    equipment: ['Projector', 'Whiteboard', 'Sound System'],
-    is_available: true
-  },
-  {
-    id: 2,
-    name: 'Lab B201',
-    capacity: 30,
-    building: 'Science Block B',
-    equipment: ['Computers', 'Projector', 'Lab Equipment'],
-    is_available: true
-  },
-  {
-    id: 3,
-    name: 'Lecture Hall C301',
-    capacity: 200,
-    building: 'Main Hall C',
-    equipment: ['Projector', 'Sound System', 'Recording Equipment'],
-    is_available: true
-  }
-];
-
-const DUMMY_LEVELS: AcademicLevel[] = [
-  {
-    id: 1,
-    level_code: '100',
-    level_name: 'Level 100',
-    required_courses: ['CSC101', 'MTH101', 'ENG101'],
-    total_credits: 18,
-    is_active: true
-  },
-  {
-    id: 2,
-    level_code: '200',
-    level_name: 'Level 200',
-    required_courses: ['CSC201', 'MTH201', 'STA201'],
-    total_credits: 21,
-    is_active: true
-  }
-];
+  return response.json();
+};
 
 export const timetableApi = {
-  // Courses
-  getCourses: async (): Promise<Course[]> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return DUMMY_COURSES;
-  },
-
-  createCourse: async (course: Omit<Course, 'id' | 'created_at' | 'updated_at'>): Promise<Course> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const newCourse: Course = {
-      ...course,
-      id: Math.max(...DUMMY_COURSES.map(c => c.id)) + 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    DUMMY_COURSES.push(newCourse);
-    return newCourse;
-  },
-
-  updateCourse: async (id: number, updates: Partial<Course>): Promise<Course> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = DUMMY_COURSES.findIndex(c => c.id === id);
-    if (index === -1) throw new Error('Course not found');
+  getTimetableEntries: async (filters: { 
+    teacher_id?: number; 
+    academic_year?: string; 
+    semester?: number;
+    level?: string;
+    department?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        queryParams.append(key, value.toString());
+      }
+    });
     
-    DUMMY_COURSES[index] = {
-      ...DUMMY_COURSES[index],
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-    return DUMMY_COURSES[index];
+    const url = `${API_BASE_URL}/api/timetable/entries/?${queryParams}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
   },
 
-  deleteCourse: async (id: number): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = DUMMY_COURSES.findIndex(c => c.id === id);
-    if (index !== -1) {
-      DUMMY_COURSES.splice(index, 1);
+  createTimetableEntry: async (entry: {
+    course_id: number;
+    teacher_id: number;
+    time_slot_id: number;
+    room_id: number;
+    academic_year?: string;
+    semester?: number;
+    notes?: string;
+  }) => {
+    const url = `${API_BASE_URL}/api/timetable/entries/`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(entry),
+    });
+    
+    return handleResponse(response);
+  },
+
+  updateTimetableEntry: async (id: number, updates: any) => {
+    const url = `${API_BASE_URL}/api/timetable/entries/${id}/`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    
+    return handleResponse(response);
+  },
+
+  deleteTimetableEntry: async (id: number) => {
+    const url = `${API_BASE_URL}/api/timetable/entries/${id}/`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Network error' }));
+      throw new Error(error.message || `HTTP ${response.status}`);
     }
+    
+    return response.json();
   },
 
-  // Time Slots
-  getTimeSlots: async (): Promise<TimeSlot[]> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return DUMMY_TIMESLOTS;
+  getTimeSlots: async () => {
+    const url = `${API_BASE_URL}/api/timetable/timeslots/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
   },
 
-  // Rooms
-  getRooms: async (): Promise<Room[]> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return DUMMY_ROOMS;
+  createTimeSlot: async (timeSlot: {
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    duration_minutes: number;
+  }) => {
+    const url = `${API_BASE_URL}/api/timetable/timeslots/`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(timeSlot),
+    });
+    
+    return handleResponse(response);
   },
 
-  // Academic Levels
-  getAcademicLevels: async (): Promise<AcademicLevel[]> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return DUMMY_LEVELS;
+  getRooms: async () => {
+    const url = `${API_BASE_URL}/api/timetable/rooms/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
   },
 
-  /**
-   * Get timetable entries with optional filters
-   */
-  async getTimetableEntries(filters: { teacher_id?: number } = {}) {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const timetableEntries = [
-      {
-        id: 1,
-        course: DUMMY_COURSES[0],
-        teacher: { id: 1, name: 'Dr. Smith', email: 'smith@university.edu' },
-        timeslot: DUMMY_TIMESLOTS[0],
-        room: DUMMY_ROOMS[0],
-        academic_year: '2024',
-        semester: 'Fall',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
-      }
-    ];
-
-    if (filters.teacher_id) {
-      return timetableEntries.filter(entry => entry.teacher.id === filters.teacher_id);
-    }
-
-    return timetableEntries;
+  createRoom: async (room: {
+    name: string;
+    capacity: number;
+    building?: string;
+    floor?: string;
+    equipment?: string[];
+  }) => {
+    const url = `${API_BASE_URL}/api/timetable/rooms/`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(room),
+    });
+    
+    return handleResponse(response);
   },
 
-  createTimetableEntry: async (entry: Omit<TimetableEntry, 'id' | 'created_at' | 'updated_at'>): Promise<TimetableEntry> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return {
-      ...entry,
-      id: Math.floor(Math.random() * 1000),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+  getTeachers: async () => {
+    const url = `${API_BASE_URL}/api/timetable/teachers/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
   },
 
-  // Current Sessions
-  getCurrentSessions: async (teacherId?: number): Promise<SessionInfo[]> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentDay = now.getDay(); // 0 = Sunday, need to adjust for our system
+  getCourses: async () => {
+    const url = `${API_BASE_URL}/api/timetable/courses/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
+  },
 
-    // Mock current sessions based on time
-    return [
-      {
-        id: 1,
-        course: DUMMY_COURSES[0],
-        teacher: { id: 1, name: 'Dr. Smith' },
-        start_time: '08:00',
-        end_time: '10:00',
-        status: currentHour >= 8 && currentHour < 10 ? 'active' : 'scheduled',
-        attendance_count: 23,
-        total_enrolled: 45
-      }
-    ];
-  }
+  getAcademicLevels: async () => {
+    const url = `${API_BASE_URL}/api/levels/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    
+    return handleResponse(response);
+  },
+
+  getCurrentSessions: async (teacherId?: number) => {
+    return [];
+  },
+
+  getClassrooms: async () => {
+    return timetableApi.getRooms();
+  },
 };

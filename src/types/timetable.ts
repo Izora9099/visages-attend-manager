@@ -1,27 +1,10 @@
-
-// Core timetable types
-export interface Course {
-  id: number;
-  code: string;
-  name: string;
-  credits: number;
-  department: string;
-  level: string;
-  description?: string;
-  prerequisites?: string[];
-  is_active: boolean;
-  assigned_teacher?: {
-    id: number;
-    name: string;
-    email: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
+// Updated src/types/timetable.ts
+// Replace your existing types with these updated ones
 
 export interface TimeSlot {
   id: number;
   day_of_week: number; // 0 = Monday, 6 = Sunday
+  day_name: string;
   start_time: string; // HH:MM format
   end_time: string; // HH:MM format
   duration_minutes: number;
@@ -32,48 +15,87 @@ export interface Room {
   name: string;
   capacity: number;
   building?: string;
+  floor?: string;
   equipment?: string[];
   is_available: boolean;
+}
+
+export interface Course {
+  id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  level: {
+    id: number;
+    level_name: string;
+  };
+  department: {
+    id: number;
+    name: string;
+  };
+}
+
+export interface Teacher {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
 }
 
 export interface TimetableEntry {
   id: number;
   course: Course;
-  teacher: {
-    id: number;
-    name: string;
-    email: string;
-  };
-  timeslot: TimeSlot;
+  teacher: Teacher;
+  time_slot: TimeSlot;
   room: Room;
   academic_year: string;
-  semester: string;
+  semester: number;
+  is_active: boolean;
+  notes?: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface AcademicLevel {
-  id: number;
-  level_code: string; // e.g., "100", "200", "300", "400"
-  level_name: string; // e.g., "Level 100", "Level 200"
-  required_courses: string[]; // Array of course codes
-  total_credits: number;
-  is_active: boolean;
+// For creating/updating timetable entries
+export interface TimetableEntryCreate {
+  course_id: number;
+  teacher_id: number;
+  time_slot_id: number;
+  room_id: number;
+  academic_year?: string;
+  semester?: number;
+  notes?: string;
 }
 
-export interface TimetableConflict {
-  type: 'teacher' | 'room' | 'student';
-  message: string;
-  conflicting_entries: TimetableEntry[];
+export interface TimetableEntryUpdate extends Partial<TimetableEntryCreate> {
+  is_active?: boolean;
+}
+
+// For filtering timetable entries
+export interface TimetableFilters {
+  teacher_id?: number;
+  academic_year?: string;
+  semester?: number;
+  level?: string;
+  department?: string;
+}
+
+// Legacy types for backward compatibility
+export interface AcademicLevel {
+  id: number;
+  level_code: string;
+  level_name: string;
+  required_courses: string[];
+  total_credits: number;
+  is_active: boolean;
 }
 
 export interface SessionInfo {
   id: number;
   course: Course;
-  teacher: {
-    id: number;
-    name: string;
-  };
+  teacher: Teacher;
   start_time: string;
   end_time: string;
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
@@ -82,13 +104,8 @@ export interface SessionInfo {
   room: Room;
 }
 
-// New interface for timetable creation
-export interface TimetableSlotEntry {
-  timeSlotId: number;
-  dayOfWeek: number;
-  entries: {
-    courseId: number;
-    teacherId: number;
-    roomId: number;
-  }[];
+export interface TimetableConflict {
+  type: 'teacher' | 'room' | 'student';
+  message: string;
+  conflicting_entries: TimetableEntry[];
 }
