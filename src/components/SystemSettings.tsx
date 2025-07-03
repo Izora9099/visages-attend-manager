@@ -270,7 +270,7 @@ export const SystemSettings = () => {
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button onClick={handleSaveSettings} disabled={loading}>
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSaveSettings} disabled={loading}>
             {loading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
             Save Settings
           </Button>

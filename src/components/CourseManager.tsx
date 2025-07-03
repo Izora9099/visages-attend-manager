@@ -80,10 +80,11 @@ export const LevelBasedCourseManager = ({
               <BookOpen className="h-5 w-5 mr-2" />
               Courses by Academic Level
             </CardTitle>
-            <Button onClick={openCreateDialog}>
+            
+            {/*<Button onClick={openCreateDialog}>
               <Plus className="h-4 w-4 mr-2" />
               Add Course
-            </Button>
+            </Button>*/}
           </div>
         </CardHeader>
         <CardContent>

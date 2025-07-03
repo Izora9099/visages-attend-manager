@@ -900,7 +900,7 @@ export const Students = () => {
           <Users className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Students Management</h1>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Student
         </Button>

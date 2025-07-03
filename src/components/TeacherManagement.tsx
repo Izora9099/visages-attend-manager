@@ -840,7 +840,7 @@ function TeacherManagementComponent() {
           
           <Dialog open={isAddTeacherOpen} onOpenChange={setIsAddTeacherOpen}>
             <DialogTrigger asChild>
-              <Button className="flex items-center bg-blue-600 hover:bg-blue-700">
+              <Button className="flex items-center bg-blue-600 hover:bg-blue-700 text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Teacher
               </Button>

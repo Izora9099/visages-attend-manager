@@ -198,13 +198,14 @@ export const CourseManagement: React.FC<CourseManagementProps> = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <Button onClick={() => {
+          {/* <Button onClick={() => {
             setEditingCourse(null);
             setIsDialogOpen(true);
           }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Course
-          </Button>
+          </Button>*/}
+         
         </div>
       </div>
 
