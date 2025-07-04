@@ -1,4 +1,4 @@
-// src/services/djangoApi.ts - Updated to match your Django URLs exactly
+// src/services/djangoApi.ts - Complete updated version with attendance fixes
 
 import { UserPermissions } from '@/types/permissions';
 
@@ -144,7 +144,12 @@ class DjangoApiService {
       try {
         const errorData = await response.json();
         errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
-        throw new Error(errorMessage);
+        
+        // Create error object with additional context
+        const error = new Error(errorMessage);
+        (error as any).status = response.status;
+        (error as any).errors = errorData;
+        throw error;
       } catch (jsonError) {
         throw new Error(errorMessage);
       }
@@ -344,7 +349,14 @@ class DjangoApiService {
 
   // Course extended actions (matches your custom endpoints)
   async getCourseStudents(courseId: number): Promise<any> {
-    return this.makeRequest(`/courses/${courseId}/students/`);
+    try {
+      const response = await this.makeRequest(`/courses/${courseId}/students/`);
+      console.log(`📚 Course ${courseId} students:`, response);
+      return response || [];
+    } catch (error) {
+      console.error(`❌ Error fetching students for course ${courseId}:`, error);
+      return [];
+    }
   }
 
   async getCourseAttendance(courseId: number): Promise<any> {
@@ -413,6 +425,107 @@ class DjangoApiService {
   // Legacy endpoint for backward compatibility
   async getStudentsList(): Promise<any> {
     return this.makeRequest('/get-students/');
+  }
+
+  // ============================
+  // 🎓 ENHANCED ATTENDANCE & ENROLLMENT METHODS (NEW)
+  // ============================
+
+  async getStudentsWithEnrollment(filters?: Record<string, any>): Promise<any[]> {
+    try {
+      const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
+      const response = await this.makeRequest(`/students/${query}`);
+      
+      // Ensure each student has enrollment information
+      const students = response.results || response;
+      return students.map((student: any) => ({
+        id: student.id,
+        name: student.full_name || `${student.first_name} ${student.last_name}`.trim(),
+        first_name: student.first_name,
+        last_name: student.last_name,
+        matric_number: student.matric_number,
+        email: student.email,
+        department: student.department,
+        level: student.level,
+        enrolled_courses: student.enrolled_courses || [],
+        status: student.status || 'active'
+      }));
+    } catch (error) {
+      console.error('❌ Error fetching students with enrollment:', error);
+      return [];
+    }
+  }
+
+  async enrollStudentInCourse(studentId: number, courseId: number): Promise<any> {
+    try {
+      return await this.makeRequest(`/students/${studentId}/enroll-courses/`, {
+        method: 'POST',
+        body: JSON.stringify({ course_ids: [courseId] }),
+      });
+    } catch (error) {
+      console.error(`❌ Error enrolling student ${studentId} in course ${courseId}:`, error);
+      throw error;
+    }
+  }
+
+  async checkStudentEnrollment(studentId: number, courseId: number): Promise<boolean> {
+    try {
+      const student = await this.getStudent(studentId);
+      const enrolledCourseIds = student.enrolled_courses?.map((course: any) => course.id) || [];
+      return enrolledCourseIds.includes(courseId);
+    } catch (error) {
+      console.error(`❌ Error checking enrollment for student ${studentId}:`, error);
+      return false;
+    }
+  }
+
+  // Enhanced attendance marking with enrollment validation
+  async markAttendanceWithValidation(attendanceData: {
+    student: number;
+    course: number;
+    status: string;
+    notes?: string;
+  }): Promise<any> {
+    try {
+      // First check if student is enrolled in the course
+      const isEnrolled = await this.checkStudentEnrollment(attendanceData.student, attendanceData.course);
+      
+      if (!isEnrolled) {
+        // Auto-enroll the student if they're not enrolled
+        console.log(`🔄 Auto-enrolling student ${attendanceData.student} in course ${attendanceData.course}`);
+        await this.enrollStudentInCourse(attendanceData.student, attendanceData.course);
+      }
+      
+      // Now mark attendance
+      return await this.markAttendance(attendanceData);
+    } catch (error) {
+      console.error('❌ Error marking attendance with validation:', error);
+      throw error;
+    }
+  }
+
+  // Get students enrolled in a specific course with full details
+  async getEnrolledStudentsForCourse(courseId: number): Promise<any[]> {
+    try {
+      const response = await this.makeRequest(`/courses/${courseId}/students/`);
+      console.log(`📚 Enrolled students for course ${courseId}:`, response);
+      
+      // Ensure proper formatting
+      return (response || []).map((student: any) => ({
+        id: student.id,
+        name: student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.name || 'Unknown Student',
+        first_name: student.first_name || '',
+        last_name: student.last_name || '',
+        matric_number: student.matric_number || '',
+        email: student.email || '',
+        department: student.department || null,
+        level: student.level || null,
+        status: student.status || 'active'
+      }));
+    } catch (error) {
+      console.error(`❌ Error fetching enrolled students for course ${courseId}:`, error);
+      return [];
+    }
   }
 
   // ============================
@@ -834,26 +947,265 @@ class DjangoApiService {
       return false;
     }
   }
-  // Add this method to your djangoApi.ts for debugging
-async debugCurrentUser(): Promise<any> {
-  try {
-    const user = await this.getCurrentUser();
-    console.log('🔍 Current User Debug Info:', {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      is_superuser: user.is_superuser,
-      is_staff: user.is_staff,
-      is_active: user.is_active,
-      permissions: user.permissions || []
-    });
-    return user;
-  } catch (error) {
-    console.error('❌ Failed to get current user:', error);
-    throw error;
+
+  // Debug method for troubleshooting user permissions
+  async debugCurrentUser(): Promise<any> {
+    try {
+      const user = await this.getCurrentUser();
+      console.log('🔍 Current User Debug Info:', {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        is_superuser: user.is_superuser,
+        is_staff: user.is_staff,
+        is_active: user.is_active,
+        permissions: user.permissions || []
+      });
+      return user;
+    } catch (error) {
+      console.error('❌ Failed to get current user:', error);
+      throw error;
+    }
   }
-}
+
+  // ============================
+  // 🏥 TEACHER-SPECIFIC METHODS
+  // ============================
+
+  async getTeacherCourses(teacherId: number): Promise<any[]> {
+    try {
+      // Get courses taught by a specific teacher
+      const response = await this.getCourses({ teacher: teacherId });
+      return response.results || response || [];
+    } catch (error) {
+      console.error(`❌ Error fetching courses for teacher ${teacherId}:`, error);
+      return [];
+    }
+  }
+
+  async getTeacherStudents(teacherId: number): Promise<any[]> {
+    try {
+      // Get all students enrolled in courses taught by this teacher
+      const courses = await this.getTeacherCourses(teacherId);
+      const allStudents: any[] = [];
+      
+      for (const course of courses) {
+        const courseStudents = await this.getCourseStudents(course.id);
+        allStudents.push(...courseStudents);
+      }
+      
+      // Remove duplicates based on student ID
+      const uniqueStudents = allStudents.filter((student, index, self) => 
+        index === self.findIndex(s => s.id === student.id)
+      );
+      
+      return uniqueStudents;
+    } catch (error) {
+      console.error(`❌ Error fetching students for teacher ${teacherId}:`, error);
+      return [];
+    }
+  }
+
+  // ============================
+  // 📈 ENHANCED ANALYTICS METHODS
+  // ============================
+
+  async getAttendanceAnalytics(filters: {
+    courseId?: number;
+    studentId?: number;
+    startDate?: string;
+    endDate?: string;
+  } = {}): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters.courseId) params.append('course_id', filters.courseId.toString());
+      if (filters.studentId) params.append('student_id', filters.studentId.toString());
+      if (filters.startDate) params.append('start_date', filters.startDate);
+      if (filters.endDate) params.append('end_date', filters.endDate);
+      
+      const queryString = params.toString();
+      const url = queryString ? `/attendance/analytics/?${queryString}` : '/attendance/analytics/';
+      
+      return await this.makeRequest(url);
+    } catch (error) {
+      console.warn('Attendance analytics endpoint not available');
+      return {
+        total_records: 0,
+        present_count: 0,
+        absent_count: 0,
+        late_count: 0,
+        attendance_rate: 0,
+        trend_data: []
+      };
+    }
+  }
+
+  async getCourseAttendanceRate(courseId: number): Promise<number> {
+    try {
+      const analytics = await this.getAttendanceAnalytics({ courseId });
+      return analytics.attendance_rate || 0;
+    } catch (error) {
+      console.error(`❌ Error getting attendance rate for course ${courseId}:`, error);
+      return 0;
+    }
+  }
+
+  async getStudentAttendanceRate(studentId: number): Promise<number> {
+    try {
+      const analytics = await this.getAttendanceAnalytics({ studentId });
+      return analytics.attendance_rate || 0;
+    } catch (error) {
+      console.error(`❌ Error getting attendance rate for student ${studentId}:`, error);
+      return 0;
+    }
+  }
+
+  // ============================
+  // 🔧 BULK OPERATIONS
+  // ============================
+
+  async bulkMarkAttendance(attendanceRecords: Array<{
+    student: number;
+    course: number;
+    status: string;
+    notes?: string;
+  }>): Promise<any> {
+    try {
+      const results = [];
+      
+      for (const record of attendanceRecords) {
+        try {
+          const result = await this.markAttendanceWithValidation(record);
+          results.push({ success: true, record, result });
+        } catch (error) {
+          results.push({ success: false, record, error: error.message });
+        }
+      }
+      
+      return {
+        total: attendanceRecords.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        results
+      };
+    } catch (error) {
+      console.error('❌ Error in bulk attendance marking:', error);
+      throw error;
+    }
+  }
+
+  async bulkEnrollStudentsInCourse(courseId: number, studentIds: number[]): Promise<any> {
+    try {
+      return await this.enrollStudentsInCourse(courseId, studentIds);
+    } catch (error) {
+      console.error(`❌ Error bulk enrolling students in course ${courseId}:`, error);
+      throw error;
+    }
+  }
+
+  // ============================
+  // 🔍 SEARCH & FILTERING HELPERS
+  // ============================
+
+  async searchStudents(query: string, filters?: Record<string, any>): Promise<any[]> {
+    try {
+      const searchFilters = {
+        search: query,
+        ...filters
+      };
+      
+      const response = await this.getStudents(searchFilters);
+      return response.results || response || [];
+    } catch (error) {
+      console.error('❌ Error searching students:', error);
+      return [];
+    }
+  }
+
+  async searchCourses(query: string, filters?: Record<string, any>): Promise<any[]> {
+    try {
+      const searchFilters = {
+        search: query,
+        ...filters
+      };
+      
+      const response = await this.getCourses(searchFilters);
+      return response.results || response || [];
+    } catch (error) {
+      console.error('❌ Error searching courses:', error);
+      return [];
+    }
+  }
+
+  // ============================
+  // 📱 MOBILE APP COMPATIBILITY
+  // ============================
+
+  async getMobileAppInfo(): Promise<any> {
+    try {
+      return await this.makeRequest('/mobile/app-info/');
+    } catch (error) {
+      console.warn('Mobile app info endpoint not available');
+      return {
+        version: '1.0.0',
+        features: ['attendance', 'face_recognition'],
+        status: 'active'
+      };
+    }
+  }
+
+  async syncMobileData(data: any): Promise<any> {
+    try {
+      return await this.makeRequest('/mobile/sync/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.warn('Mobile sync endpoint not available');
+      return { success: false, message: 'Sync not available' };
+    }
+  }
+
+  // ============================
+  // 📊 REPORTING METHODS
+  // ============================
+
+  async generateAttendanceReport(filters: {
+    courseId?: number;
+    studentId?: number;
+    startDate?: string;
+    endDate?: string;
+    format?: 'json' | 'csv' | 'pdf';
+  }): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters.courseId) params.append('course_id', filters.courseId.toString());
+      if (filters.studentId) params.append('student_id', filters.studentId.toString());
+      if (filters.startDate) params.append('start_date', filters.startDate);
+      if (filters.endDate) params.append('end_date', filters.endDate);
+      if (filters.format) params.append('format', filters.format);
+      
+      const queryString = params.toString();
+      const url = `/reports/attendance/?${queryString}`;
+      
+      return await this.makeRequest(url);
+    } catch (error) {
+      console.warn('Attendance report endpoint not available');
+      return null;
+    }
+  }
+
+  async exportData(type: 'students' | 'courses' | 'attendance', format: 'csv' | 'xlsx' = 'csv'): Promise<any> {
+    try {
+      return await this.makeRequest(`/export/${type}/?format=${format}`);
+    } catch (error) {
+      console.warn(`Export ${type} endpoint not available`);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance
