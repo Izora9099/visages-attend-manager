@@ -57,7 +57,7 @@ const Index = () => {
 
     switch (activeTab) {
       case "dashboard":
-        return <RoleBasedDashboard userPermissions={userPermissions} />;
+        return <RoleBasedDashboard userPermissions={userPermissions} setActiveTab={setActiveTab} />;
       case "timetable":
         return <TimetableManager />;
       case "courses":
@@ -79,7 +79,7 @@ const Index = () => {
       case "system-settings":
         return <SystemSettings />;
       default:
-        return <RoleBasedDashboard userPermissions={userPermissions} />;
+        return <RoleBasedDashboard userPermissions={userPermissions} setActiveTab={setActiveTab} />;
     }
   };
 

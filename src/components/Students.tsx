@@ -160,18 +160,41 @@ export const Students = () => {
   const loadInitialData = async () => {
     try {
       setLoading(true);
+      console.log('Loading initial data...');
       
       // Load academic structure data concurrently
       const [deptResponse, specResponse, levelResponse] = await Promise.all([
-        djangoApi.getDepartments().catch(() => ({ results: [] })),
-        djangoApi.getSpecializations().catch(() => ({ results: [] })),
-        djangoApi.getLevels().catch(() => ({ results: [] }))
+        djangoApi.getDepartments().catch((err) => {
+          console.error('Error loading departments:', err);
+          return { results: [] };
+        }),
+        djangoApi.getSpecializations().catch((err) => {
+          console.error('Error loading specializations:', err);
+          return { results: [] };
+        }),
+        djangoApi.getLevels().catch((err) => {
+          console.error('Error loading levels:', err);
+          return { results: [] };
+        })
       ]);
 
+      // Log the raw responses
+      console.log('Departments response:', deptResponse);
+      console.log('Specializations response:', specResponse);
+      console.log('Levels response:', levelResponse);
+
       // Handle different response formats
-      setDepartments(Array.isArray(deptResponse) ? deptResponse : deptResponse?.results || []);
-      setSpecializations(Array.isArray(specResponse) ? specResponse : specResponse?.results || []);
-      setLevels(Array.isArray(levelResponse) ? levelResponse : levelResponse?.results || []);
+      const depts = Array.isArray(deptResponse) ? deptResponse : deptResponse?.results || [];
+      const specs = Array.isArray(specResponse) ? specResponse : specResponse?.results || [];
+      const lvls = Array.isArray(levelResponse) ? levelResponse : levelResponse?.results || [];
+      
+      console.log('Processed departments:', depts);
+      console.log('Processed specializations:', specs);
+      console.log('Processed levels:', lvls);
+
+      setDepartments(depts);
+      setSpecializations(specs);
+      setLevels(lvls);
 
       // Load initial students
       loadStudents(1);
@@ -188,6 +211,7 @@ export const Students = () => {
     try {
       setLoading(true);
       setError("");
+      console.log(`Loading students page ${page} with filters:`, filters);
       
       // Filter out undefined values from filters before sending to API
       const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
@@ -203,16 +227,29 @@ export const Students = () => {
         ...cleanFilters
       };
       
+      console.log('Sending request with params:', params);
       const response = await djangoApi.getStudents(params);
+      console.log('Received students response:', response);
       
       // Handle different response formats and validate data
       const studentsData = Array.isArray(response) ? response : response?.results || [];
       const totalCount = response?.count || studentsData.length;
       
+      console.log('Raw students data:', studentsData);
+      
       // Transform and validate student data with safe defaults
       const transformedStudents: Student[] = studentsData
-        .filter(student => student && typeof student === 'object' && student.id) // Filter invalid entries
+        .filter(student => {
+          const isValid = student && typeof student === 'object' && student.id;
+          if (!isValid) {
+            console.warn('Invalid student data filtered out:', student);
+          }
+          return isValid;
+        })
         .map((student: any) => {
+          // Log the raw student data before transformation
+          console.log('Processing student:', student);
+          
           // Handle different serializer formats from backend
           let firstName = student.first_name;
           let lastName = student.last_name;
@@ -231,7 +268,17 @@ export const Students = () => {
             lastName = nameParts.slice(1).join(' ') || 'Student';
           }
           
-          return {
+          // Use the department, specialization, and level values directly from the backend
+          const departmentId = typeof student.department === 'object' ? student.department.id : student.department;
+          const departmentName = typeof student.department === 'object' ? student.department.department_name : student.department;
+          
+          const specializationId = typeof student.specialization === 'object' ? student.specialization.id : student.specialization;
+          const specializationName = typeof student.specialization === 'object' ? student.specialization.specialization_name : student.specialization;
+          
+          const levelId = typeof student.level === 'object' ? student.level.id : student.level;
+          const levelName = typeof student.level === 'object' ? student.level.level_name : student.level;
+          
+          const transformedStudent = {
             id: student.id || 0,
             first_name: firstName || 'Unknown',
             last_name: lastName || 'Student',
@@ -240,12 +287,12 @@ export const Students = () => {
             email: student.email || '',
             phone: student.phone || '',
             address: student.address || '',
-            department: student.department || student.department_id || 0,
-            department_name: student.department_name || 'Unknown Department',
-            specialization: student.specialization || student.specialization_id || null,
-            specialization_name: student.specialization_name || '',
-            level: student.level || student.level_id || 0,
-            level_name: student.level_name || 'Unknown Level',
+            department: departmentId || 0,
+            department_name: departmentName || 'Unknown Department',
+            specialization: specializationId || null,
+            specialization_name: specializationName || '',
+            level: levelId || 0,
+            level_name: levelName || 'Unknown Level',
             enrolled_courses: Array.isArray(student.enrolled_courses) ? student.enrolled_courses : [],
             enrolled_courses_count: student.enrolled_courses_count || 0,
             status: student.status || 'active',
@@ -260,14 +307,24 @@ export const Students = () => {
             emergency_phone: student.emergency_phone || '',
             face_encoding_model: student.face_encoding_model || 'cnn'
           };
+          
+          console.log('Transformed student:', transformedStudent);
+          return transformedStudent;
         });
       
+      console.log('Final transformed students:', transformedStudents);
       setStudents(transformedStudents);
-      setPagination(prev => ({
-        ...prev,
+      
+      const newPagination = {
         page,
         count: totalCount,
-        totalPages: Math.ceil(totalCount / prev.pageSize)
+        totalPages: Math.ceil(totalCount / pagination.pageSize)
+      };
+      
+      console.log('Updating pagination:', newPagination);
+      setPagination(prev => ({
+        ...prev,
+        ...newPagination
       }));
       
     } catch (err: any) {

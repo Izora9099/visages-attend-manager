@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, Clock, RefreshCw, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { djangoApi } from '@/services/djangoApi';
 
 // Updated interfaces to match your Django backend
 interface TimeSlot {
@@ -56,6 +57,13 @@ interface TimetableEntry {
   notes?: string;
   created_at: string;
   updated_at: string;
+}
+
+interface Department {
+  id: number;
+  department_name: string;
+  department_code: string;
+  is_active: boolean;
 }
 
 // Updated API service with fallback for missing endpoints
@@ -152,7 +160,7 @@ const timetableApi = {
           course_name: 'Data Structures & Algorithms',
           credits: 3,
           level: '200',
-          department: 'Computer Science'
+          department: '1'
         },
         teacher: {
           id: 1,
@@ -193,7 +201,7 @@ const timetableApi = {
           course_name: 'Fluid Mechanics',
           credits: 3,
           level: '300',
-          department: 'Mechanical Engineering'
+          department: '2'
         },
         teacher: {
           id: 2,
@@ -234,7 +242,7 @@ const timetableApi = {
           course_name: 'Power Systems II',
           credits: 3,
           level: '400',
-          department: 'Electrical Engineering'
+          department: '3'
         },
         teacher: {
           id: 3,
@@ -288,6 +296,94 @@ export const TimetableGrid = ({
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentColors, setDepartmentColors] = useState<Record<string, string>>({});
+  const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
+
+  // Available Tailwind colors for departments
+  const availableColors = [
+    'bg-blue-100 text-blue-800 border-blue-200',
+    'bg-green-100 text-green-800 border-green-200',
+    'bg-purple-100 text-purple-800 border-purple-200',
+    'bg-orange-100 text-orange-800 border-orange-200',
+    'bg-pink-100 text-pink-800 border-pink-200',
+    'bg-indigo-100 text-indigo-800 border-indigo-200',
+    'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'bg-red-100 text-red-800 border-red-200',
+    'bg-teal-100 text-teal-800 border-teal-200',
+    'bg-cyan-100 text-cyan-800 border-cyan-200',
+    'bg-lime-100 text-lime-800 border-lime-200',
+    'bg-amber-100 text-amber-800 border-amber-200',
+  ];
+
+  // Fetch departments
+  const fetchDepartments = async () => {
+    try {
+      const response = await djangoApi.getDepartments();
+      const depts = Array.isArray(response) ? response : response?.results || [];
+      setDepartments(depts);
+      
+      // Create a map of department IDs to names for easy lookup
+      const deptMap = depts.reduce((acc, dept) => ({
+        ...acc,
+        [dept.id]: dept.department_name
+      }), {});
+      
+      // Assign colors to departments using their IDs as keys
+      const colors: Record<string, string> = {};
+      depts.forEach((dept, index) => {
+        colors[dept.id] = availableColors[index % availableColors.length];
+      });
+      
+      setDepartmentColors(colors);
+      setDepartmentMap(deptMap);
+    } catch (err) {
+      console.error('Failed to fetch departments:', err);
+      setError('Failed to load department information');
+    }
+  };
+
+  // Get color based on department ID
+  const getDepartmentColor = (departmentId: string | number) => {
+    return departmentColors[departmentId] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  // Get department name by ID
+  const getDepartmentName = (departmentId: string | number) => {
+    return departmentMap[departmentId] || `Department ${departmentId}`;
+  };
+
+  // Load data when component mounts
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        await fetchDepartments();
+        
+        // Load timetable entries
+        const filters: Record<string, any> = { academic_year: academicYear, semester };
+        if (department) filters.department = department;
+        if (level) filters.level = level;
+        
+        const [entriesData, slots] = await Promise.all([
+          timetableApi.getTimetableEntries(filters),
+          timetableApi.getTimeSlots()
+        ]);
+        
+        setEntries(entriesData);
+        setTimeSlots(slots.length > 0 ? slots : timetableApi.getDefaultTimeSlots());
+      } catch (err) {
+        console.error('Error loading timetable data:', err);
+        setError('Failed to load timetable data. Please try again later.');
+        setEntries(timetableApi.getMockTimetableData());
+        setTimeSlots(timetableApi.getDefaultTimeSlots());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [academicYear, semester, department, level]);
 
   // Days of the week for the grid
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -301,50 +397,6 @@ export const TimetableGrid = ({
     { id: 4, day_of_week: 0, day_name: 'All Days', start_time: '14:30', end_time: '16:30', duration_minutes: 120 },
     { id: 5, day_of_week: 0, day_name: 'All Days', start_time: '17:00', end_time: '19:00', duration_minutes: 120 },
   ];
-
-  useEffect(() => {
-    fetchTimetableData();
-  }, [academicYear, semester, department, level]);
-
-  const fetchTimetableData = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log('🔄 Fetching timetable data...');
-      
-      // Build filters
-      const filters: Record<string, any> = {
-        academic_year: academicYear,
-        semester: semester
-      };
-      
-      if (department && department !== 'all') filters.department = department;
-      if (level && level !== 'all') filters.level = level;
-
-      // Fetch both entries and time slots
-      const [entriesData, timeSlotsData] = await Promise.all([
-        timetableApi.getTimetableEntries(filters),
-        timetableApi.getTimeSlots()
-      ]);
-
-      console.log('📅 Entries fetched:', entriesData.length);
-      console.log('⏰ Time slots fetched:', timeSlotsData.length);
-
-      setEntries(entriesData);
-      setTimeSlots(timeSlotsData.length > 0 ? timeSlotsData : defaultTimeSlots);
-      
-    } catch (err: any) {
-      console.error('❌ Error fetching timetable:', err);
-      setError('Failed to load timetable data. Showing mock data instead.');
-      
-      // Use mock data even on error
-      setEntries(timetableApi.getMockTimetableData());
-      setTimeSlots(timetableApi.getDefaultTimeSlots());
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Get unique time periods (ignoring day_of_week for slots)
   const getUniqueTimeSlots = () => {
@@ -364,19 +416,6 @@ export const TimetableGrid = ({
       entry.time_slot.day_of_week === dayIndex && 
       entry.time_slot.start_time === timeSlot.start_time
     );
-  };
-
-  // Get color based on department
-  const getDepartmentColor = (department: string) => {
-    const colors: Record<string, string> = {
-      'Computer Science': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Computer Engineering': 'bg-green-100 text-green-800 border-green-200',
-      'Electrical Engineering': 'bg-purple-100 text-purple-800 border-purple-200',
-      'Mechanical Engineering': 'bg-orange-100 text-orange-800 border-orange-200',
-      'Civil Engineering': 'bg-pink-100 text-pink-800 border-pink-200',
-      'Civil Engineering and Architecture': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    };
-    return colors[department] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
   const uniqueTimeSlots = getUniqueTimeSlots();
@@ -402,7 +441,7 @@ export const TimetableGrid = ({
             <p className="text-sm text-gray-600 mb-4">
               Showing mock data. Run the timetable generator script to populate real data.
             </p>
-            <Button onClick={fetchTimetableData} variant="outline" size="sm">
+            <Button onClick={fetchDepartments} variant="outline" size="sm">
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
@@ -422,7 +461,7 @@ export const TimetableGrid = ({
             <p className="text-sm text-gray-600 mb-4">
               Run the timetable generator script to create schedule entries
             </p>
-            <Button onClick={fetchTimetableData} variant="outline">
+            <Button onClick={fetchDepartments} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
@@ -443,7 +482,7 @@ export const TimetableGrid = ({
           <div className="flex items-center gap-2">
             <Badge variant="outline">{academicYear}</Badge>
             <Badge variant="outline">Semester {semester}</Badge>
-            <Button onClick={fetchTimetableData} size="sm" variant="outline">
+            <Button onClick={fetchDepartments} size="sm" variant="outline">
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
@@ -535,17 +574,19 @@ export const TimetableGrid = ({
         <div className="mt-6 pt-4 border-t">
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-sm font-medium mr-2">Departments:</span>
-            {[
-              'Computer Science',
-              'Computer Engineering', 
-              'Electrical Engineering',
-              'Mechanical Engineering',
-              'Civil Engineering and Architecture'
-            ].map(dept => (
-              <Badge key={dept} variant="outline" className={cn("text-xs", getDepartmentColor(dept))}>
-                {dept}
-              </Badge>
-            ))}
+            {departments.length > 0 ? (
+              departments.map(dept => (
+                <Badge 
+                  key={dept.id} 
+                  variant="outline" 
+                  className={cn("text-xs", getDepartmentColor(dept.id))}
+                >
+                  {dept.department_name}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-sm text-gray-500">No departments found</span>
+            )}
           </div>
         </div>
 

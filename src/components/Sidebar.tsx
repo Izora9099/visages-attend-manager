@@ -165,8 +165,8 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
         </div>
       </div>
 
-      <nav className="mt-4 flex flex-col h-full">
-        <div className="flex-1">
+      <nav className="mt-4 flex flex-col h-[calc(100%-80px)]">
+        <div className="flex-1 overflow-y-auto">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -186,30 +186,20 @@ export const Sidebar = ({ activeTab, setActiveTab, isOpen, onToggle }: SidebarPr
           })}
         </div>
 
-        {/* User info at bottom when sidebar is open */}
+        {/* User info at bottom */}
         {isOpen && user && (
-          <div className="p-4 border-t border-blue-800 dark:border-gray-700 text-xs text-gray-300">
-            <div className="truncate mb-1">
-              <span className="text-gray-400">User:</span> {user.username}
+          <div className="mt-auto border-t border-blue-800 dark:border-gray-700">
+            <div className="px-4 py-3">
+              <div className="font-medium text-sm mb-1">
+                {user.first_name && user.last_name 
+                  ? `${user.first_name} ${user.last_name}`
+                  : user.username}
+              </div>
+              <div className="text-xs text-blue-300 dark:text-blue-400 flex items-center gap-1">
+                {user.is_superuser && <span>⭐</span>}
+                <span>{new PermissionChecker(user).getDisplayRole().toLowerCase()}</span>
+              </div>
             </div>
-            <div className="truncate mb-1">
-              <span className="text-gray-400">Role:</span> {new PermissionChecker(user).getDisplayRole()}
-            </div>
-            {user.is_superuser && (
-              <div className="text-yellow-400 font-medium text-sm">⭐ Super Admin</div>
-            )}
-          </div>
-        )}
-
-        {/* Collapsed user info when sidebar is closed */}
-        {!isOpen && user && (
-          <div className="p-2 border-t border-blue-800 dark:border-gray-700 text-center">
-            <div className="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-xs font-medium mx-auto">
-              {user.first_name ? user.first_name[0].toUpperCase() : user.username[0].toUpperCase()}
-            </div>
-            {user.is_superuser && (
-              <div className="text-yellow-400 text-xs mt-1">⭐</div>
-            )}
           </div>
         )}
       </nav>

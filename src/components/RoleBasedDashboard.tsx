@@ -27,7 +27,8 @@ import {
   Pie,
   Cell,
   LineChart,
-  Line
+  Line,
+  LabelList
 } from "recharts";
 
 import { djangoApi } from '@/services/djangoApi';
@@ -40,9 +41,10 @@ interface PermissionChecker {
 
 interface RoleBasedDashboardProps {
   userPermissions: UserPermissions;
+  setActiveTab: (tab: string) => void;
 }
 
-export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPermissions }) => {
+export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPermissions, setActiveTab }) => {
   const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStats[]>([]);
   const [courseStats, setCourseStats] = useState<CourseStats[]>([]);
@@ -237,17 +239,52 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
         {departmentStats.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Department Performance</CardTitle>
+              <CardTitle>Student Distribution by Department</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Total students: {departmentStats.reduce((sum, dept) => sum + (dept.total_students || 0), 0)}
+              </p>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={departmentStats}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="department_name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="total_students" fill="#3b82f6" name="Students" />
-                  <Bar dataKey="total_courses" fill="#10b981" name="Courses" />
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart 
+                  data={[...departmentStats].sort((a, b) => (b.total_students || 0) - (a.total_students || 0))}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" />
+                  <YAxis 
+                    dataKey="department_name" 
+                    type="category" 
+                    width={120}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Tooltip 
+                    formatter={(value) => [`${value} students`, 'Number of Students']}
+                    labelFormatter={(label) => `Department: ${label}`}
+                  />
+                  <Bar 
+                    dataKey="total_students" 
+                    name="Students" 
+                    fill="#3b82f6"
+                    radius={[0, 4, 4, 0]}
+                  >
+                    {[...departmentStats]
+                      .sort((a, b) => (b.total_students || 0) - (a.total_students || 0))
+                      .map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={`hsl(${index * (360 / departmentStats.length)}, 70%, 60%)`}
+                        />
+                      ))
+                    }
+                    <LabelList 
+                      dataKey="total_students" 
+                      position="right" 
+                      formatter={(value: number) => `${value} (${((value / departmentStats.reduce((sum, dept) => sum + (dept.total_students || 0), 0)) * 100).toFixed(1)}%)`}
+                      style={{ fill: '#4b5563', fontSize: 12 }}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -256,23 +293,46 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
 
         {/* Recent Activities */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle>Recent System Activities</CardTitle>
+            <a 
+              href="#" 
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveTab('security');
+              }}
+            >
+              See All
+            </a>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {dashboardData?.recent_activities?.length > 0 ? (
-                dashboardData.recent_activities.map((activity: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                dashboardData.recent_activities.slice(0, 3).map((activity: any, index: number) => (
+                  <div key={index} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded transition-colors">
                     <div>
                       <p className="font-medium">{activity.action || 'System Activity'}</p>
-                      <p className="text-sm text-gray-500">by {activity.user || 'System'}</p>
+                      <p className="text-sm text-gray-500">
+                        {activity.user || 'System'}
+                        <span className="mx-2">•</span>
+                        <span>{activity.time || 'Just now'}</span>
+                      </p>
                     </div>
-                    <span className="text-sm text-gray-400">{activity.time || 'Recently'}</span>
+                    <div className="text-sm text-gray-400">
+                      {activity.status === 'success' ? (
+                        <span className="text-green-500">✓</span>
+                      ) : activity.status === 'failed' ? (
+                        <span className="text-red-500">✗</span>
+                      ) : null}
+                    </div>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 text-center py-4">No recent activities</p>
+                <div className="text-center py-6">
+                  <p className="text-gray-500">No recent activities found</p>
+                  <p className="text-sm text-gray-400 mt-1">System activities will appear here</p>
+                </div>
               )}
             </div>
           </CardContent>

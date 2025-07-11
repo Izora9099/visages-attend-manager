@@ -379,8 +379,8 @@ export const SecurityDashboard = () => {
     
     const searchLower = searchTerm.toLowerCase();
     return (
-      activity.user.full_name.toLowerCase().includes(searchLower) ||
-      activity.user.username.toLowerCase().includes(searchLower) ||
+      activity.user?.full_name?.toLowerCase().includes(searchLower) ||
+      activity.user?.username?.toLowerCase().includes(searchLower) ||
       activity.action.toLowerCase().includes(searchLower) ||
       activity.details.toLowerCase().includes(searchLower)
     );
@@ -390,11 +390,11 @@ export const SecurityDashboard = () => {
     const summary: Record<string, { count: number; role: string; lastActive: string }> = {};
     
     userActivities.forEach(activity => {
-      const username = activity.user.username;
+      const username = activity.user?.username;
       if (!summary[username]) {
         summary[username] = {
           count: 0,
-          role: activity.user.role,
+          role: activity.user?.role,
           lastActive: activity.timestamp
         };
       }
@@ -591,7 +591,7 @@ export const SecurityDashboard = () => {
                     <div key={activity.id} className="flex items-center space-x-3 p-3 border rounded-lg">
                       {getActivityIcon(activity.action)}
                       <div className="flex-1">
-                        <p className="font-medium text-sm">{activity.user.full_name}</p>
+                        <p className="font-medium text-sm">{activity.user?.full_name || 'Unknown User'}</p>
                         <p className="text-xs text-gray-500">{activity.details}</p>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -677,43 +677,61 @@ export const SecurityDashboard = () => {
 
               <div className="space-y-2">
                 {filteredActivities && filteredActivities.length > 0 ? (
-                  filteredActivities.map((activity) => (
-                    <div key={activity.id} className="grid grid-cols-1 lg:grid-cols-8 gap-4 p-3 border rounded-lg text-sm hover:bg-gray-50">
-                      <div className="flex items-center space-x-2">
-                        {getActivityIcon(activity.action)}
-                        <span className="font-medium">{activity.user?.full_name || 'Unknown User'}</span>
+                  filteredActivities.map((activity) => {
+                    // Safely get user display name with fallbacks
+                    const getUserDisplayName = () => {
+                      if (!activity.user) return 'System';
+                      if (typeof activity.user === 'string') return activity.user;
+                      if (activity.user.full_name) return activity.user.full_name;
+                      if (activity.user.username) return activity.user.username;
+                      return 'Unknown User';
+                    };
+
+                    // Safely get user role with fallback
+                    const getUserRole = () => {
+                      if (!activity.user) return 'System';
+                      if (typeof activity.user === 'string') return 'User';
+                      return activity.user.role || 'User';
+                    };
+
+                    return (
+                      <div key={activity.id} className="grid grid-cols-1 lg:grid-cols-8 gap-4 p-3 border rounded-lg text-sm hover:bg-gray-50">
+                        <div className="flex items-center space-x-2">
+                          {getActivityIcon(activity.action)}
+                          <span className="font-medium">{getUserDisplayName()}</span>
+                        </div>
+                        <div>
+                          <Badge variant="outline" className="text-xs">
+                            {getUserRole()}
+                          </Badge>
+                        </div>
+                        <div>{activity.action ? activity.action.replace(/_/g, ' ') : 'Unknown Action'}</div>
+                        <div className="truncate">{activity.details || 'No details'}</div>
+                        <div className="flex items-center space-x-1">
+                          <Globe className="h-3 w-3 text-gray-400" />
+                          <span>{activity.ip_address || 'Unknown IP'}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Calendar className="h-3 w-3 text-gray-400" />
+                          <span>
+                            {activity.timestamp ? 
+                              new Date(activity.timestamp).toLocaleString() : 
+                              'Unknown time'
+                            }
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {getStatusIcon(activity.status)}
+                          <span className="capitalize">{activity.status || 'unknown'}</span>
+                        </div>
+                        <div className="text-right">
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <div>
-                        <Badge variant="outline" className="text-xs">
-                          {activity.user?.role || 'Unknown'}
-                        </Badge>
-                      </div>
-                      <div>{activity.action ? activity.action.replace(/_/g, ' ') : 'Unknown Action'}</div>
-                      <div className="truncate">{activity.details || 'No details'}</div>
-                      <div className="flex items-center space-x-1">
-                        <Globe className="h-3 w-3 text-gray-400" />
-                        <span>{activity.ip_address || 'Unknown IP'}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="h-3 w-3 text-gray-400" />
-                        <span>
-                          {activity.timestamp ? 
-                            new Date(activity.timestamp).toLocaleString() : 
-                            'Unknown time'
-                          }
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        {getStatusIcon(activity.status)}
-                        <span className="capitalize">{activity.status || 'unknown'}</span>
-                      </div>
-                      <div className="text-right">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="text-center p-8 text-gray-500">
                     <Activity className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -1006,7 +1024,7 @@ export const SecurityDashboard = () => {
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm">Teacher Activities</span>
                     <span className="font-bold text-blue-600">
-                      {userActivities.filter(a => a.user.role === 'Teacher').length}
+                      {userActivities.filter(a => a.user?.role === 'Teacher').length}
                     </span>
                   </div>
                 </div>
@@ -1056,7 +1074,7 @@ export const SecurityDashboard = () => {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {['Teacher', 'Manager', 'Super Admin'].map(role => {
-                  const roleActivities = userActivities.filter(a => a.user.role === role);
+                  const roleActivities = userActivities.filter(a => a.user?.role === role);
                   const successRate = roleActivities.length > 0 ? 
                     (roleActivities.filter(a => a.status === 'success').length / roleActivities.length * 100).toFixed(1) : '0';
                   
