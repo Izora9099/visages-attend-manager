@@ -185,15 +185,18 @@ export const Students = () => {
 
   // ── Render ──
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Users className="h-6 w-6" />
-          <h1 className="text-2xl font-bold">Students Management</h1>
+    <div className="space-y-8">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 pb-8 border-b border-hairline md:flex-row md:items-end md:justify-between animate-fade-up">
+        <div className="space-y-2 max-w-2xl">
+          <p className="eyebrow">Directory</p>
+          <h1 className="display-serif text-4xl md:text-5xl leading-[1.05] text-balance">Students.</h1>
+          <p className="text-muted-foreground text-[15px] leading-relaxed pt-1">
+            Manage enrolment, capture biometric data, and monitor attendance health.
+          </p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Add Student
+        <Button variant="ink" size="lg" onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4" /> Add student
         </Button>
       </div>
 
@@ -364,10 +367,10 @@ export const Students = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <span className="text-sm font-medium">{student.attendance_rate}%</span>
-                          <div className="w-16 bg-gray-200 rounded-full h-2">
+                          <span className="text-sm font-medium num">{student.attendance_rate}%</span>
+                          <div className="w-16 bg-secondary rounded-full h-1.5 overflow-hidden">
                             <div
-                              className="bg-blue-600 h-2 rounded-full"
+                              className="bg-accent h-1.5 rounded-full transition-all"
                               style={{ width: `${Math.min(100, Math.max(0, student.attendance_rate))}%` }}
                             />
                           </div>
