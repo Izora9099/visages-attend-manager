@@ -1,1212 +1,444 @@
-// src/services/djangoApi.ts - Complete updated version with attendance fixes
+// Mock API service — no backend calls. All data lives in src/data/mockData.ts.
 
-import { UserPermissions } from '@/types/permissions';
+import * as db from '@/data/mockData';
 
-interface ApiEndpoint {
-  url: string;
-  name: string;
-  priority: number;
+const delay = (ms = 150) => new Promise(r => setTimeout(r, ms));
+
+let nextId = () => Date.now();
+
+// Mutable in-memory copies so CRUD operations persist during the session
+let departments = [...db.departments];
+let specializations = [...db.specializations];
+let levels = [...db.levels];
+let courses = [...db.courses];
+let students = [...db.students];
+let adminUsers = [...db.adminUsers];
+let attendance = [...db.attendanceRecords];
+let sessions = [...db.attendanceSessions];
+let activities = [...db.userActivities];
+let timetable = [...db.timetableEntries];
+let systemSettings = { ...db.systemSettings };
+let securitySettings = { ...db.securitySettings };
+
+function paginate<T>(arr: T[], filters: Record<string, any> = {}) {
+  const page = Number(filters.page) || 1;
+  const size = Number(filters.page_size) || 50;
+  const results = arr.slice((page - 1) * size, page * size);
+  return { count: arr.length, results };
 }
 
 class DjangoApiService {
-  private baseUrl: string | null = null;
-  private lastDetectionTime: number = 0;
-  private readonly detectionCacheMs = 30000; // 30 seconds
-  private isRefreshing = false;
-
-  private readonly possibleEndpoints: ApiEndpoint[] = [
-    { url: 'http://localhost:8000', name: 'Development', priority: 1 },
-    { url: 'http://127.0.0.1:8000', name: 'Local IPv4', priority: 2 },
-    { url: 'http://localhost:8080', name: 'Alternative Dev', priority: 3 },
-    { url: 'http://192.168.1.100:8000', name: 'LAN', priority: 4 },
-  ];
-
-  async getApiUrl(): Promise<string> {
-    if (this.baseUrl && Date.now() - this.lastDetectionTime < this.detectionCacheMs) {
-      return this.baseUrl;
-    }
-
-    const detectedUrl = await this.detectBackendUrl();
-    this.baseUrl = detectedUrl;
-    return detectedUrl;
+  // ── Auth ──────────────────────────────────────────────────────────────
+  async login(username: string, password: string) {
+    await delay();
+    if (!username || !password) throw new Error('Username and password are required.');
+    const user = adminUsers.find(u => u.username === username) || adminUsers[0];
+    return { access: 'mock-token', refresh: 'mock-refresh', user };
   }
 
-  private async detectBackendUrl(): Promise<string> {
-    console.log('🚀 Starting Django backend auto-detection...');
-    this.lastDetectionTime = Date.now();
-    
-    const sortedEndpoints = [...this.possibleEndpoints].sort((a, b) => a.priority - b.priority);
-
-    for (const endpoint of sortedEndpoints) {
-      const isReachable = await this.testEndpoint(endpoint);
-      if (isReachable) {
-        // Note: No /api prefix since your URLs don't use it at root level
-        const detectedUrl = endpoint.url;
-        console.log(`🎯 Selected Django backend: ${detectedUrl} (${endpoint.name})`);
-        return detectedUrl;
-      }
-    }
-
-    console.warn('⚠️ No Django backend detected, using fallback...');
-    const envUrl = import.meta.env.VITE_API_BASE_URL;
-    if (envUrl) {
-      console.log(`🔄 Using environment variable: ${envUrl}`);
-      return envUrl;
-    }
-
-    const fallbackUrl = 'http://localhost:8000';
-    console.log(`🔄 Using fallback URL: ${fallbackUrl}`);
-    return fallbackUrl;
+  async getCurrentUser() {
+    await delay();
+    const stored = localStorage.getItem('mock_user');
+    if (stored) return JSON.parse(stored);
+    return adminUsers[0];
   }
 
-  private async testEndpoint(endpoint: ApiEndpoint): Promise<boolean> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-      // Test the root API endpoint
-      const response = await fetch(`${endpoint.url}/`, {
-        method: 'GET',
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      });
-
-      clearTimeout(timeoutId);
-      
-      if (response.ok || response.status === 401 || response.status === 403) {
-        console.log(`✅ Django backend reachable: ${endpoint.url} (${endpoint.name})`);
-        return true;
-      }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log(`⏰ Timeout testing: ${endpoint.url} (${endpoint.name})`);
-      } else {
-        console.log(`❌ Error testing ${endpoint.url} (${endpoint.name}):`, error.message);
-      }
-    }
-    return false;
+  async logout() {
+    localStorage.removeItem('mock_user');
   }
 
-  private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
-    const apiUrl = await this.getApiUrl();
-    const url = `${apiUrl}${endpoint}`;
-    
-    const token = localStorage.getItem('access_token');
-    
-    const defaultHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+  async refreshToken() { return true; }
+
+  // ── Departments ───────────────────────────────────────────────────────
+  async getDepartments(_filters: Record<string, any> = {}) {
+    await delay();
+    return departments;
+  }
+  async createDepartment(data: any) {
+    await delay();
+    const item = { ...data, id: nextId(), is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    departments = [item, ...departments];
+    return item;
+  }
+  async updateDepartment(id: number, data: any) {
+    await delay();
+    departments = departments.map(d => d.id === id ? { ...d, ...data, updated_at: new Date().toISOString() } : d);
+    return departments.find(d => d.id === id);
+  }
+  async deleteDepartment(id: number) {
+    await delay();
+    departments = departments.filter(d => d.id !== id);
+  }
+
+  // ── Specializations ───────────────────────────────────────────────────
+  async getSpecializations(filters: Record<string, any> = {}) {
+    await delay();
+    let list = specializations;
+    if (filters.department) list = list.filter(s => s.department === Number(filters.department));
+    return list;
+  }
+  async createSpecialization(data: any) {
+    await delay();
+    const dept = departments.find(d => d.id === Number(data.department));
+    const item = { ...data, id: nextId(), department_name: dept?.department_name, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    specializations = [item, ...specializations];
+    return item;
+  }
+  async updateSpecialization(id: number, data: any) {
+    await delay();
+    specializations = specializations.map(s => s.id === id ? { ...s, ...data, updated_at: new Date().toISOString() } : s);
+    return specializations.find(s => s.id === id);
+  }
+  async deleteSpecialization(id: number) {
+    await delay();
+    specializations = specializations.filter(s => s.id !== id);
+  }
+
+  // ── Levels ────────────────────────────────────────────────────────────
+  async getLevels(_filters: Record<string, any> = {}) {
+    await delay();
+    return levels;
+  }
+  async createLevel(data: any) {
+    await delay();
+    const item = { ...data, id: nextId(), is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    levels = [item, ...levels];
+    return item;
+  }
+  async updateLevel(id: number, data: any) {
+    await delay();
+    levels = levels.map(l => l.id === id ? { ...l, ...data, updated_at: new Date().toISOString() } : l);
+    return levels.find(l => l.id === id);
+  }
+  async deleteLevel(id: number) {
+    await delay();
+    levels = levels.filter(l => l.id !== id);
+  }
+
+  // ── Courses ───────────────────────────────────────────────────────────
+  async getCourses(filters: Record<string, any> = {}) {
+    await delay();
+    let list = courses;
+    if (filters.department) list = list.filter(c => c.department === Number(filters.department));
+    if (filters.level) list = list.filter(c => c.level === Number(filters.level));
+    if (filters.search) list = list.filter(c => c.course_name.toLowerCase().includes(filters.search.toLowerCase()) || c.course_code.toLowerCase().includes(filters.search.toLowerCase()));
+    return list;
+  }
+  async getCourse(id: number) {
+    await delay();
+    return courses.find(c => c.id === id);
+  }
+  async createCourse(data: any) {
+    await delay();
+    const dept = departments.find(d => d.id === Number(data.department));
+    const lvl = levels.find(l => l.id === Number(data.level));
+    const item = { ...data, id: nextId(), department_name: dept?.department_name, level_name: lvl?.level_name, enrolled_students_count: 0, status: 'active', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    courses = [item, ...courses];
+    return item;
+  }
+  async updateCourse(id: number, data: any) {
+    await delay();
+    courses = courses.map(c => c.id === id ? { ...c, ...data, updated_at: new Date().toISOString() } : c);
+    return courses.find(c => c.id === id);
+  }
+  async deleteCourse(id: number) {
+    await delay();
+    courses = courses.filter(c => c.id !== id);
+  }
+  async getCourseStudents(courseId: number) {
+    await delay();
+    return students.filter(s => s.enrolled_courses.includes(courseId));
+  }
+  async enrollStudentsInCourse(courseId: number, studentIds: number[]) {
+    await delay();
+    students = students.map(s => studentIds.includes(s.id) && !s.enrolled_courses.includes(courseId) ? { ...s, enrolled_courses: [...s.enrolled_courses, courseId] } : s);
+    return { enrolled: studentIds.length };
+  }
+
+  // ── Students ──────────────────────────────────────────────────────────
+  async getStudents(filters: Record<string, any> = {}) {
+    await delay();
+    let list = students;
+    if (filters.department) list = list.filter(s => s.department === Number(filters.department));
+    if (filters.level) list = list.filter(s => s.level === Number(filters.level));
+    if (filters.specialization) list = list.filter(s => s.specialization === Number(filters.specialization));
+    if (filters.status) list = list.filter(s => s.status === filters.status);
+    if (filters.search) list = list.filter(s => s.full_name?.toLowerCase().includes(filters.search.toLowerCase()) || s.matric_number.toLowerCase().includes(filters.search.toLowerCase()));
+    return paginate(list, filters);
+  }
+  async getStudent(id: number) {
+    await delay();
+    return students.find(s => s.id === id);
+  }
+  async createStudent(data: any) {
+    await delay();
+    const dept = departments.find(d => d.id === Number(data.department));
+    const lvl = levels.find(l => l.id === Number(data.level));
+    const spec = specializations.find(s => s.id === Number(data.specialization));
+    const item = { ...data, id: nextId(), full_name: `${data.first_name} ${data.last_name}`, department_name: dept?.department_name, level_name: lvl?.level_name, specialization_name: spec?.specialization_name, enrolled_courses: [], face_images_count: 0, attendance_rate: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    students = [item, ...students];
+    return item;
+  }
+  async updateStudent(id: number, data: any) {
+    await delay();
+    students = students.map(s => s.id === id ? { ...s, ...data, full_name: `${data.first_name || s.first_name} ${data.last_name || s.last_name}`, updated_at: new Date().toISOString() } : s);
+    return students.find(s => s.id === id);
+  }
+  async deleteStudent(id: number) {
+    await delay();
+    students = students.filter(s => s.id !== id);
+  }
+
+  // ── Attendance ────────────────────────────────────────────────────────
+  async getAttendanceRecords(filters: Record<string, any> = {}) {
+    await delay();
+    let list = attendance;
+    if (filters.course_id) list = list.filter(a => a.course === Number(filters.course_id));
+    if (filters.student_id) list = list.filter(a => a.student === Number(filters.student_id));
+    if (filters.status) list = list.filter(a => a.status === filters.status);
+    return paginate(list, filters);
+  }
+  async markAttendance(data: any) {
+    await delay();
+    const student = students.find(s => s.id === Number(data.student));
+    const course = courses.find(c => c.id === Number(data.course));
+    const item = { ...data, id: nextId(), student_name: student?.full_name, student_matric: student?.matric_number, course_name: course?.course_name, course_code: course?.course_code, check_in_time: new Date().toISOString(), date: new Date().toISOString().split('T')[0], created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    attendance = [item, ...attendance];
+    return item;
+  }
+  async updateAttendance(id: number, data: any) {
+    await delay();
+    attendance = attendance.map(a => a.id === id ? { ...a, ...data, updated_at: new Date().toISOString() } : a);
+    return attendance.find(a => a.id === id);
+  }
+  async deleteAttendance(id: number) {
+    await delay();
+    attendance = attendance.filter(a => a.id !== id);
+  }
+  async markAttendanceWithValidation(data: any) { return this.markAttendance(data); }
+
+  // ── Sessions ──────────────────────────────────────────────────────────
+  async startAttendanceSession(data: any) {
+    await delay();
+    const course = courses.find(c => c.id === Number(data.course));
+    const item = { ...data, id: nextId(), session_id: `SES-${Date.now()}`, course_name: course?.course_name, course_code: course?.course_code, start_time: new Date().toISOString(), status: 'active', present_count: 0, late_count: 0, absent_count: 0, created_at: new Date().toISOString() };
+    sessions = [item, ...sessions];
+    return item;
+  }
+  async endAttendanceSession(data: any) {
+    await delay();
+    sessions = sessions.map(s => s.session_id === data.session_id ? { ...s, status: 'completed', actual_end_time: new Date().toISOString() } : s);
+    return sessions.find(s => s.session_id === data.session_id);
+  }
+  async getSessionStats(sessionId: string) {
+    await delay();
+    return sessions.find(s => s.session_id === sessionId);
+  }
+
+  // ── Dashboard ─────────────────────────────────────────────────────────
+  async getDashboardStats() {
+    await delay();
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecords = attendance.filter(a => a.date === today);
+    return {
+      total_students: students.filter(s => s.status === 'active').length,
+      total_courses: courses.filter(c => c.status === 'active').length,
+      total_departments: departments.filter(d => d.is_active).length,
+      total_teachers: adminUsers.filter(u => u.role === 'teacher').length,
+      active_sessions: sessions.filter(s => s.status === 'active').length,
+      total_attendance_records: attendance.length,
+      todays_attendance_count: todayRecords.length,
+      todays_attendance_rate: todayRecords.length > 0 ? Math.round(todayRecords.filter(a => a.status === 'present').length / todayRecords.length * 100) : 0,
+      weekly_attendance_trend: [
+        { day: 'Mon', rate: 88 }, { day: 'Tue', rate: 82 }, { day: 'Wed', rate: 91 }, { day: 'Thu', rate: 85 }, { day: 'Fri', rate: 79 },
+      ],
+      recent_activities: activities.slice(0, 5),
     };
+  }
 
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-      console.log(`🔑 Request to ${endpoint} - Token: ${token.substring(0, 20)}...`);
-    } else {
-      console.warn(`⚠️ Request to ${endpoint} - NO TOKEN FOUND`);
+  async getDepartmentStats() {
+    await delay();
+    return departments.map(dept => ({
+      department_name: dept.department_name,
+      total_students: students.filter(s => s.department === dept.id).length,
+      total_courses: courses.filter(c => c.department === dept.id).length,
+      total_specializations: specializations.filter(s => s.department === dept.id).length,
+      average_attendance_rate: Math.floor(75 + Math.random() * 20),
+    }));
+  }
+
+  async getCourseStats() {
+    await delay();
+    return courses.map(c => ({
+      course_code: c.course_code,
+      course_name: c.course_name,
+      enrolled_students: c.enrolled_students_count || 0,
+      total_attendance_records: attendance.filter(a => a.course === c.id).length,
+      average_attendance_rate: Math.floor(70 + Math.random() * 25),
+    }));
+  }
+
+  async getTeacherStats() {
+    await delay();
+    return adminUsers.filter(u => u.role === 'teacher').map(t => ({
+      teacher_name: t.full_name,
+      total_courses: courses.filter(c => c.teachers.includes(t.id)).length,
+      total_students: 0,
+      total_attendance_records: 0,
+    }));
+  }
+
+  // ── Admin Users ───────────────────────────────────────────────────────
+  async getAdminUsers() {
+    await delay();
+    return adminUsers.map(u => ({ ...u, name: u.full_name ?? `${u.first_name} ${u.last_name}` }));
+  }
+  async createAdminUser(data: any) {
+    await delay();
+    const item = { ...data, id: nextId(), full_name: `${data.first_name} ${data.last_name}`, is_active: true, is_2fa_enabled: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    adminUsers = [item, ...adminUsers];
+    return item;
+  }
+  async updateAdminUser(id: number, data: any) {
+    await delay();
+    adminUsers = adminUsers.map(u => u.id === id ? { ...u, ...data, updated_at: new Date().toISOString() } : u);
+    return adminUsers.find(u => u.id === id);
+  }
+  async deleteAdminUser(id: number) {
+    await delay();
+    adminUsers = adminUsers.filter(u => u.id !== id);
+  }
+
+  // ── Security ──────────────────────────────────────────────────────────
+  async getUserActivities(_filters: any = {}) {
+    await delay();
+    return activities.slice(0, 20);
+  }
+  async getLoginAttempts() {
+    await delay();
+    return db.loginAttempts;
+  }
+  async getActiveSessions() {
+    await delay();
+    return db.activeSessions;
+  }
+  async getSecurityStatistics() {
+    await delay();
+    return { total_logins: 42, failed_logins: 3, active_sessions: 2, blocked_ips: 1 };
+  }
+  async getSecuritySettings() {
+    await delay();
+    return securitySettings;
+  }
+  async updateSecuritySettings(data: any) {
+    await delay();
+    securitySettings = { ...securitySettings, ...data, updated_at: new Date().toISOString() };
+    return securitySettings;
+  }
+  async terminateSession(_sessionId: string) {
+    await delay();
+    return { success: true };
+  }
+
+  // ── System Settings ───────────────────────────────────────────────────
+  async getSystemSettings() {
+    await delay();
+    return systemSettings;
+  }
+  async updateSystemSettings(data: any) {
+    await delay();
+    systemSettings = { ...systemSettings, ...data, updated_at: new Date().toISOString() };
+    return systemSettings;
+  }
+  async createSystemBackup() {
+    await delay();
+    return { id: nextId(), status: 'completed', file_size_mb: 12, started_at: new Date().toISOString(), completed_at: new Date().toISOString() };
+  }
+
+  // ── Timetable ─────────────────────────────────────────────────────────
+  async getTimetableEntries(filters: any = {}) {
+    await delay();
+    let list = timetable;
+    if (filters.department && filters.department !== 'all') list = list.filter(t => t.department === filters.department);
+    if (filters.level && filters.level !== 'all') list = list.filter(t => t.level === filters.level);
+    return list;
+  }
+  async createTimetableEntry(data: any) {
+    await delay();
+    const item = { ...data, id: nextId() };
+    timetable = [item, ...timetable];
+    return item;
+  }
+  async updateTimetableEntry(id: number, data: any) {
+    await delay();
+    timetable = timetable.map(t => t.id === id ? { ...t, ...data } : t);
+    return timetable.find(t => t.id === id);
+  }
+  async deleteTimetableEntry(id: number) {
+    await delay();
+    timetable = timetable.filter(t => t.id !== id);
+  }
+  async getTimeSlots() {
+    await delay();
+    return [
+      { id: 1, name: 'Period 1', start_time: '08:00', end_time: '10:00' },
+      { id: 2, name: 'Period 2', start_time: '10:00', end_time: '12:00' },
+      { id: 3, name: 'Period 3', start_time: '13:00', end_time: '15:00' },
+      { id: 4, name: 'Period 4', start_time: '15:00', end_time: '17:00' },
+    ];
+  }
+  async getRooms() {
+    await delay();
+    return [
+      { id: 1, name: 'CSE Lab 1', capacity: 40 },
+      { id: 2, name: 'CSE Lab 2', capacity: 40 },
+      { id: 3, name: 'EEE Hall A', capacity: 60 },
+      { id: 4, name: 'BUS Room 1', capacity: 50 },
+      { id: 5, name: 'MAT Room A', capacity: 45 },
+    ];
+  }
+  async getTimetableTeachers() { return this.getAdminUsers().then(u => u.filter((a: any) => a.role === 'teacher')); }
+  async getTimetableCourses() { return this.getCourses(); }
+
+  // ── Misc helpers kept for compatibility ───────────────────────────────
+  async getApiUrl() { return 'mock://localhost'; }
+  async testConnection() { return true; }
+  async getStudentAttendanceSummary(studentId: number) {
+    await delay();
+    const records = attendance.filter(a => a.student === studentId);
+    return { total: records.length, present: records.filter(r => r.status === 'present').length, absent: records.filter(r => r.status === 'absent').length, late: records.filter(r => r.status === 'late').length };
+  }
+
+  // ── Aliases & missing methods ─────────────────────────────────────────
+  async getSystemStats() {
+    await delay();
+    return { cpu_usage: 18, memory_usage: 42, disk_usage: 31, active_users: 4, total_requests_today: 128, uptime_hours: 720 };
+  }
+
+  async createBackup() { return this.createSystemBackup(); }
+
+  async testEmailSettings() {
+    await delay();
+    return { success: true, message: 'Email settings OK (mock)' };
+  }
+
+  async exportActivityLog(_filters: any = {}) {
+    await delay();
+    const csv = 'timestamp,user,action,resource,status\n' +
+      activities.map(a => `${a.timestamp},${a.user},${a.action},${a.resource},${a.status}`).join('\n');
+    return new Blob([csv], { type: 'text/csv' });
+  }
+
+  async updateCurrentUserProfile(data: any) {
+    await delay();
+    const stored = localStorage.getItem('mock_user');
+    if (stored) {
+      const updated = { ...JSON.parse(stored), ...data };
+      localStorage.setItem('mock_user', JSON.stringify(updated));
+      return updated;
     }
-
-    const config: RequestInit = {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
-    };
-
-    try {
-      console.log(`📡 Making ${config.method || 'GET'} request to ${endpoint}`);
-      const response = await fetch(url, config);
-      return await this.handleResponse(response, endpoint);
-    } catch (error: any) {
-      console.error(`❌ API Error [${endpoint}]:`, error);
-      throw new Error(error.message || 'Network error occurred');
-    }
-  }
-
-  private async handleResponse(response: Response, endpoint: string): Promise<any> {
-    console.log(`📨 Response from ${endpoint}: ${response.status} ${response.statusText}`);
-
-    if (response.status === 401 && !this.isRefreshing) {
-      console.log('🔄 Attempting token refresh...');
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        console.log('✅ Token refreshed, retrying request...');
-        return this.makeRequest(endpoint);
-      } else {
-        console.log('❌ Token refresh failed, redirecting to login...');
-        this.logout();
-        throw new Error('Session expired. Please log in again.');
-      }
-    }
-
-    if (!response.ok) {
-      let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
-        
-        // Create error object with additional context
-        const error = new Error(errorMessage);
-        (error as any).status = response.status;
-        (error as any).errors = errorData;
-        throw error;
-      } catch (jsonError) {
-        throw new Error(errorMessage);
-      }
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    }
-    return await response.text();
-  }
-
-  // ============================
-  // 🔐 AUTHENTICATION (Matches your URLs exactly)
-  // ============================
-  
-  async login(username: string, password: string): Promise<any> {
-    console.log('🔑 Attempting login...');
-    const response = await this.makeRequest('/auth/login/', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    });
-
-    if (response.access && response.refresh) {
-      localStorage.setItem('access_token', response.access);
-      localStorage.setItem('refresh_token', response.refresh);
-      console.log('✅ Login successful');
-      return response;
-    }
-    throw new Error('Invalid response format');
-  }
-
-  async refreshToken(): Promise<boolean> {
-    if (this.isRefreshing) return false;
-    
-    this.isRefreshing = true;
-    try {
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (!refreshToken) {
-        return false;
-      }
-
-      const response = await this.makeRequest('/auth/refresh/', {
-        method: 'POST',
-        body: JSON.stringify({ refresh: refreshToken }),
-      });
-
-      if (response.access) {
-        localStorage.setItem('access_token', response.access);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('❌ Token refresh failed:', error);
-      return false;
-    } finally {
-      this.isRefreshing = false;
-    }
-  }
-
-  async getCurrentUser(): Promise<any> {
-    return this.makeRequest('/auth/user/');
-  }
-
-  async logout(): Promise<void> {
-    console.log('👋 Logging out...');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user_data');
-  }
-
-  // ============================
-  // 🏛️ ACADEMIC STRUCTURE (ViewSet endpoints - matches your router)
-  // ============================
-
-  // DEPARTMENTS
-  async getDepartments(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/departments/${query}`);
-  }
-
-  async createDepartment(data: any): Promise<any> {
-    return this.makeRequest('/departments/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getDepartment(id: number): Promise<any> {
-    return this.makeRequest(`/departments/${id}/`);
-  }
-
-  async updateDepartment(id: number, data: any): Promise<any> {
-    return this.makeRequest(`/departments/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteDepartment(id: number): Promise<any> {
-    return this.makeRequest(`/departments/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // SPECIALIZATIONS
-  async getSpecializations(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/specializations/${query}`);
-  }
-
-  async createSpecialization(data: any): Promise<any> {
-    return this.makeRequest('/specializations/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getSpecialization(id: number): Promise<any> {
-    return this.makeRequest(`/specializations/${id}/`);
-  }
-
-  async updateSpecialization(id: number, data: any): Promise<any> {
-    return this.makeRequest(`/specializations/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteSpecialization(id: number): Promise<any> {
-    return this.makeRequest(`/specializations/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // LEVELS
-  async getLevels(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/levels/${query}`);
-  }
-
-  async createLevel(data: any): Promise<any> {
-    return this.makeRequest('/levels/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getLevel(id: number): Promise<any> {
-    return this.makeRequest(`/levels/${id}/`);
-  }
-
-  async updateLevel(id: number, data: any): Promise<any> {
-    return this.makeRequest(`/levels/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteLevel(id: number): Promise<any> {
-    return this.makeRequest(`/levels/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // COURSES
-  async getCourses(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/courses/${query}`);
-  }
-
-  async createCourse(data: any): Promise<any> {
-    console.log('📚 Creating course with data:', data);
-    return this.makeRequest('/courses/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getCourse(id: number): Promise<any> {
-    return this.makeRequest(`/courses/${id}/`);
-  }
-
-  async updateCourse(id: number, data: any): Promise<any> {
-    console.log('📝 Updating course:', id, data);
-    return this.makeRequest(`/courses/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteCourse(id: number): Promise<any> {
-    return this.makeRequest(`/courses/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // Course extended actions (matches your custom endpoints)
-  async getCourseStudents(courseId: number): Promise<any> {
-    try {
-      const response = await this.makeRequest(`/courses/${courseId}/students/`);
-      console.log(`📚 Course ${courseId} students:`, response);
-      return response || [];
-    } catch (error) {
-      console.error(`❌ Error fetching students for course ${courseId}:`, error);
-      return [];
-    }
-  }
-
-  async getCourseAttendance(courseId: number): Promise<any> {
-    return this.makeRequest(`/courses/${courseId}/attendance/`);
-  }
-
-  async enrollStudentsInCourse(courseId: number, studentIds: number[]): Promise<any> {
-    return this.makeRequest(`/courses/${courseId}/enroll-students/`, {
-      method: 'POST',
-      body: JSON.stringify({ student_ids: studentIds }),
-    });
-  }
-
-  // STUDENTS
-  async getStudents(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/students/${query}`);
-  }
-
-  async createStudent(data: any): Promise<any> {
-    return this.makeRequest('/students/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getStudent(id: number): Promise<any> {
-    return this.makeRequest(`/students/${id}/`);
-  }
-
-  async updateStudent(id: number, data: any): Promise<any> {
-    return this.makeRequest(`/students/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteStudent(id: number): Promise<any> {
-    return this.makeRequest(`/students/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // Student extended actions (matches your custom endpoints)
-  async getStudentCourses(studentId: number): Promise<any> {
-    return this.makeRequest(`/students/${studentId}/courses/`);
-  }
-
-  async enrollStudentInCourses(studentId: number, courseIds: number[]): Promise<any> {
-    return this.makeRequest(`/students/${studentId}/enroll-courses/`, {
-      method: 'POST',
-      body: JSON.stringify({ course_ids: courseIds }),
-    });
-  }
-
-  async autoAssignStudentCourses(studentId: number): Promise<any> {
-    return this.makeRequest(`/students/${studentId}/auto-assign-courses/`, {
-      method: 'POST',
-    });
-  }
-
-  async getStudentAttendanceSummary(studentId: number): Promise<any> {
-    return this.makeRequest(`/students/${studentId}/attendance-summary/`);
-  }
-
-  // Legacy endpoint for backward compatibility
-  async getStudentsList(): Promise<any> {
-    return this.makeRequest('/get-students/');
-  }
-
-  // ============================
-  // 🎓 ENHANCED ATTENDANCE & ENROLLMENT METHODS (NEW)
-  // ============================
-
-  async getStudentsWithEnrollment(filters?: Record<string, any>): Promise<any[]> {
-    try {
-      const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-      const response = await this.makeRequest(`/students/${query}`);
-      
-      // Ensure each student has enrollment information
-      const students = response.results || response;
-      return students.map((student: any) => ({
-        id: student.id,
-        name: student.full_name || `${student.first_name} ${student.last_name}`.trim(),
-        first_name: student.first_name,
-        last_name: student.last_name,
-        matric_number: student.matric_number,
-        email: student.email,
-        department: student.department,
-        level: student.level,
-        enrolled_courses: student.enrolled_courses || [],
-        status: student.status || 'active'
-      }));
-    } catch (error) {
-      console.error('❌ Error fetching students with enrollment:', error);
-      return [];
-    }
-  }
-
-  async enrollStudentInCourse(studentId: number, courseId: number): Promise<any> {
-    try {
-      return await this.makeRequest(`/students/${studentId}/enroll-courses/`, {
-        method: 'POST',
-        body: JSON.stringify({ course_ids: [courseId] }),
-      });
-    } catch (error) {
-      console.error(`❌ Error enrolling student ${studentId} in course ${courseId}:`, error);
-      throw error;
-    }
-  }
-
-  async checkStudentEnrollment(studentId: number, courseId: number): Promise<boolean> {
-    try {
-      const student = await this.getStudent(studentId);
-      const enrolledCourseIds = student.enrolled_courses?.map((course: any) => course.id) || [];
-      return enrolledCourseIds.includes(courseId);
-    } catch (error) {
-      console.error(`❌ Error checking enrollment for student ${studentId}:`, error);
-      return false;
-    }
-  }
-
-  // Enhanced attendance marking with enrollment validation
-  async markAttendanceWithValidation(attendanceData: {
-    student: number;
-    course: number;
-    status: string;
-    notes?: string;
-  }): Promise<any> {
-    try {
-      // First check if student is enrolled in the course
-      const isEnrolled = await this.checkStudentEnrollment(attendanceData.student, attendanceData.course);
-      
-      if (!isEnrolled) {
-        // Auto-enroll the student if they're not enrolled
-        console.log(`🔄 Auto-enrolling student ${attendanceData.student} in course ${attendanceData.course}`);
-        await this.enrollStudentInCourse(attendanceData.student, attendanceData.course);
-      }
-      
-      // Now mark attendance
-      return await this.markAttendance(attendanceData);
-    } catch (error) {
-      console.error('❌ Error marking attendance with validation:', error);
-      throw error;
-    }
-  }
-
-  // Get students enrolled in a specific course with full details
-  async getEnrolledStudentsForCourse(courseId: number): Promise<any[]> {
-    try {
-      const response = await this.makeRequest(`/courses/${courseId}/students/`);
-      console.log(`📚 Enrolled students for course ${courseId}:`, response);
-      
-      // Ensure proper formatting
-      return (response || []).map((student: any) => ({
-        id: student.id,
-        name: student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.name || 'Unknown Student',
-        first_name: student.first_name || '',
-        last_name: student.last_name || '',
-        matric_number: student.matric_number || '',
-        email: student.email || '',
-        department: student.department || null,
-        level: student.level || null,
-        status: student.status || 'active'
-      }));
-    } catch (error) {
-      console.error(`❌ Error fetching enrolled students for course ${courseId}:`, error);
-      return [];
-    }
-  }
-
-  // ============================
-  // 📊 ATTENDANCE (ViewSet and custom endpoints)
-  // ============================
-
-  async getAttendanceRecords(filters?: Record<string, any>): Promise<any> {
-    const query = filters ? `?${new URLSearchParams(filters).toString()}` : "";
-    return this.makeRequest(`/attendance/${query}`);
-  }
-
-  async markAttendance(attendanceData: any): Promise<any> {
-    return this.makeRequest('/attendance/', {
-      method: 'POST',
-      body: JSON.stringify(attendanceData),
-    });
-  }
-
-  async getAttendanceRecord(id: number): Promise<any> {
-    return this.makeRequest(`/attendance/${id}/`);
-  }
-
-  async updateAttendance(id: number, data: { status?: string; check_in?: string }): Promise<any> {
-    return this.makeRequest(`/attendance/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteAttendance(id: number): Promise<any> {
-    return this.makeRequest(`/attendance/${id}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // Legacy endpoint for getting attendance summary
-  async getAttendanceSummary(): Promise<any> {
-    return this.makeRequest('/get-attendance/');
-  }
-
-  // ============================
-  // 🎯 SESSION MANAGEMENT (Matches your session endpoints)
-  // ============================
-
-  async startAttendanceSession(sessionData: any): Promise<any> {
-    return this.makeRequest('/sessions/start/', {
-      method: 'POST',
-      body: JSON.stringify(sessionData),
-    });
-  }
-
-  async endAttendanceSession(sessionData: any): Promise<any> {
-    return this.makeRequest('/sessions/end/', {
-      method: 'POST',
-      body: JSON.stringify(sessionData),
-    });
-  }
-
-  async sessionBasedAttendance(attendanceData: any): Promise<any> {
-    return this.makeRequest('/attendance/checkin/', {
-      method: 'POST',
-      body: JSON.stringify(attendanceData),
-    });
-  }
-
-  async getSessionStats(sessionId: string): Promise<any> {
-    return this.makeRequest(`/sessions/${sessionId}/stats/`);
-  }
-
-  // ============================
-  // 🧠 FACE RECOGNITION (Legacy endpoints)
-  // ============================
-
-  async uploadFaceImage(studentId: number, imageFile: File): Promise<any> {
-    const apiUrl = await this.getApiUrl();
-    const formData = new FormData();
-    formData.append('image', imageFile);
-    formData.append('student_id', studentId.toString());
-
-    const response = await fetch(`${apiUrl}/register-student/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
-      },
-      body: formData,
-    });
-    
-    return this.handleResponse(response, '/register-student/');
-  }
-
-  async recognizeFace(imageFile: File): Promise<any> {
-    const apiUrl = await this.getApiUrl();
-    const formData = new FormData();
-    formData.append('image', imageFile);
-
-    const response = await fetch(`${apiUrl}/recognize-face/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
-      },
-      body: formData,
-    });
-    
-    return this.handleResponse(response, '/recognize-face/');
-  }
-
-  // ============================
-  // 📊 DASHBOARD & ANALYTICS (Custom endpoints with fallbacks)
-  // ============================
-
-  async getDashboardStats(): Promise<any> {
-    try {
-      return await this.makeRequest('/dashboard/stats/');
-    } catch (error) {
-      console.warn('Dashboard stats endpoint not available, using mock data');
-      return {
-        total_students: 0,
-        total_courses: 0,
-        total_departments: 0,
-        total_teachers: 0,
-        active_sessions: 0,
-        total_attendance_records: 0,
-        todays_attendance_count: 0,
-        todays_attendance_rate: 0,
-        weekly_attendance_trend: [],
-        recent_activities: []
-      };
-    }
-  }
-
-  async getDepartmentStats(): Promise<any> {
-    try {
-      return await this.makeRequest('/analytics/departments/');
-    } catch (error) {
-      console.warn('Department stats endpoint not available');
-      return [];
-    }
-  }
-
-  async getCourseStats(): Promise<any> {
-    try {
-      return await this.makeRequest('/analytics/courses/');
-    } catch (error) {
-      console.warn('Course stats endpoint not available');
-      return [];
-    }
-  }
-
-  async getTeacherStats(): Promise<any> {
-    try {
-      return await this.makeRequest('/analytics/teachers/');
-    } catch (error) {
-      console.warn('Teacher stats endpoint not available');
-      return [];
-    }
-  }
-
-  // ============================
-  // 📚 ENROLLMENT MANAGEMENT (Custom endpoints)
-  // ============================
-
-  async manageStudentEnrollment(enrollmentData: any): Promise<any> {
-    return this.makeRequest('/enrollment/student/', {
-      method: 'POST',
-      body: JSON.stringify(enrollmentData),
-    });
-  }
-
-  async bulkEnrollment(bulkData: any): Promise<any> {
-    return this.makeRequest('/enrollment/bulk/', {
-      method: 'POST',
-      body: JSON.stringify(bulkData),
-    });
-  }
-
-  // ============================
-  // ⚙️ SYSTEM MANAGEMENT (Custom endpoints)
-  // ============================
-
-  async getSystemStats(): Promise<any> {
-    try {
-      return await this.makeRequest('/system/stats/');
-    } catch (error) {
-      console.warn('System stats endpoint not available');
-      return {};
-    }
-  }
-
-  async getSystemSettings(): Promise<any> {
-    try {
-      return await this.makeRequest('/system/settings/');
-    } catch (error) {
-      console.warn('System settings endpoint not available');
-      return {};
-    }
-  }
-
-  async updateSystemSettings(settings: any): Promise<any> {
-    return this.makeRequest('/system/settings/update/', {
-      method: 'POST',
-      body: JSON.stringify(settings),
-    });
-  }
-
-  async testEmailSettings(): Promise<any> {
-    return this.makeRequest('/system/test-email/', {
-      method: 'POST',
-    });
-  }
-
-  async createSystemBackup(): Promise<any> {
-    return this.makeRequest('/system/backup/create/', {
-      method: 'POST',
-    });
-  }
-
-  // ============================
-  // 👥 ADMIN USER MANAGEMENT
-  // ============================
-
-  async getAdminUsers(): Promise<any[]> {
-    try {
-      return await this.makeRequest('/admin-users/');
-    } catch (error) {
-      console.warn('Admin users endpoint not available');
-      return [];
-    }
-  }
-
-  async createAdminUser(userData: any): Promise<any> {
-    return this.makeRequest('/admin-users/create/', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-  }
-
-  async updateAdminUser(userId: number, userData: any): Promise<any> {
-    return this.makeRequest(`/admin-users/${userId}/`, {
-      method: 'PUT',
-      body: JSON.stringify(userData),
-    });
-  }
-
-  async deleteAdminUser(userId: number): Promise<any> {
-    return this.makeRequest(`/admin-users/${userId}/delete/`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ============================
-  // 🔒 SECURITY MANAGEMENT
-  // ============================
-
-  async getUserActivities(filters: any = {}): Promise<any[]> {
-    try {
-      const params = new URLSearchParams();
-      
-      if (filters.days) params.append('days', filters.days.toString());
-      if (filters.user && filters.user !== 'all') params.append('user', filters.user);
-      if (filters.action && filters.action !== 'all') params.append('action', filters.action);
-      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
-      
-      const queryString = params.toString();
-      const url = queryString ? `/security/activities/?${queryString}` : '/security/activities/';
-      
-      return await this.makeRequest(url);
-    } catch (error) {
-      console.warn('User activities endpoint not available');
-      return [];
-    }
-  }
-
-  async getLoginAttempts(filters: any = {}): Promise<any[]> {
-    try {
-      const params = new URLSearchParams();
-      if (filters.days) params.append('days', filters.days.toString());
-      
-      const queryString = params.toString();
-      const url = queryString ? `/security/login-attempts/?${queryString}` : '/security/login-attempts/';
-      
-      return await this.makeRequest(url);
-    } catch (error) {
-      console.warn('Login attempts endpoint not available');
-      return [];
-    }
-  }
-
-  async getActiveSessions(): Promise<any[]> {
-    try {
-      return await this.makeRequest('/security/active-sessions/');
-    } catch (error) {
-      console.warn('Active sessions endpoint not available');
-      return [];
-    }
-  }
-
-  async getSecurityStatistics(): Promise<any> {
-    try {
-      return await this.makeRequest('/security/statistics/');
-    } catch (error) {
-      console.warn('Security statistics endpoint not available');
-      return {};
-    }
-  }
-
-  async getSecuritySettings(): Promise<any> {
-    try {
-      return await this.makeRequest('/security/settings/');
-    } catch (error) {
-      console.warn('Security settings endpoint not available');
-      return {};
-    }
-  }
-
-  async updateSecuritySettings(settings: any): Promise<any> {
-    return this.makeRequest('/security/settings/update/', {
-      method: 'POST',
-      body: JSON.stringify(settings),
-    });
-  }
-
-  async terminateSession(sessionId: string): Promise<any> {
-    return this.makeRequest(`/security/sessions/${sessionId}/terminate/`, {
-      method: 'POST',
-    });
-  }
-
-  // ============================
-  // 📅 TIMETABLE MANAGEMENT (Matches your timetable URLs)
-  // ============================
-
-  async getTimetableEntries(): Promise<any> {
-    return this.makeRequest('/api/timetable/entries/');
-  }
-
-  async createTimetableEntry(entryData: any): Promise<any> {
-    return this.makeRequest('/api/timetable/entries/', {
-      method: 'POST',
-      body: JSON.stringify(entryData),
-    });
-  }
-
-  async getTimetableEntry(entryId: number): Promise<any> {
-    return this.makeRequest(`/api/timetable/entries/${entryId}/`);
-  }
-
-  async updateTimetableEntry(entryId: number, entryData: any): Promise<any> {
-    return this.makeRequest(`/api/timetable/entries/${entryId}/`, {
-      method: 'PUT',
-      body: JSON.stringify(entryData),
-    });
-  }
-
-  async deleteTimetableEntry(entryId: number): Promise<any> {
-    return this.makeRequest(`/api/timetable/entries/${entryId}/`, {
-      method: 'DELETE',
-    });
-  }
-
-  async getTimeSlots(): Promise<any> {
-    return this.makeRequest('/api/timetable/timeslots/');
-  }
-
-  async getRooms(): Promise<any> {
-    return this.makeRequest('/api/timetable/rooms/');
-  }
-
-  async getTimetableTeachers(): Promise<any> {
-    return this.makeRequest('/api/timetable/teachers/');
-  }
-
-  async getTimetableCourses(): Promise<any> {
-    return this.makeRequest('/api/timetable/courses/');
-  }
-
-  // ============================
-  // 👤 HALL OF FACES (HOF) SYSTEM
-  // ============================
-
-  async detectFacesHOF(imageFile: File): Promise<any> {
-    const apiUrl = await this.getApiUrl();
-    const formData = new FormData();
-    formData.append('image', imageFile);
-
-    const response = await fetch(`${apiUrl}/api/faces/detect-hof/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
-      },
-      body: formData,
-    });
-    
-    return this.handleResponse(response, '/api/faces/detect-hof/');
-  }
-
-  async getHOFSystemStatus(): Promise<any> {
-    return this.makeRequest('/api/hof/status/');
-  }
-
-  // ============================
-  // 🔍 UTILITY METHODS
-  // ============================
-
-  async testConnection(): Promise<boolean> {
-    try {
-      await this.makeRequest('/');
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  // Check if user has specific permissions (if you implement this)
-  async checkPermissions(permission: string): Promise<boolean> {
-    try {
-      const user = await this.getCurrentUser();
-      return user.permissions?.includes(permission) || user.is_superuser;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  // Debug method for troubleshooting user permissions
-  async debugCurrentUser(): Promise<any> {
-    try {
-      const user = await this.getCurrentUser();
-      console.log('🔍 Current User Debug Info:', {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        is_superuser: user.is_superuser,
-        is_staff: user.is_staff,
-        is_active: user.is_active,
-        permissions: user.permissions || []
-      });
-      return user;
-    } catch (error) {
-      console.error('❌ Failed to get current user:', error);
-      throw error;
-    }
-  }
-
-  // ============================
-  // 🏥 TEACHER-SPECIFIC METHODS
-  // ============================
-
-  async getTeacherCourses(teacherId: number): Promise<any[]> {
-    try {
-      // Get courses taught by a specific teacher
-      const response = await this.getCourses({ teacher: teacherId });
-      return response.results || response || [];
-    } catch (error) {
-      console.error(`❌ Error fetching courses for teacher ${teacherId}:`, error);
-      return [];
-    }
-  }
-
-  async getTeacherStudents(teacherId: number): Promise<any[]> {
-    try {
-      // Get all students enrolled in courses taught by this teacher
-      const courses = await this.getTeacherCourses(teacherId);
-      const allStudents: any[] = [];
-      
-      for (const course of courses) {
-        const courseStudents = await this.getCourseStudents(course.id);
-        allStudents.push(...courseStudents);
-      }
-      
-      // Remove duplicates based on student ID
-      const uniqueStudents = allStudents.filter((student, index, self) => 
-        index === self.findIndex(s => s.id === student.id)
-      );
-      
-      return uniqueStudents;
-    } catch (error) {
-      console.error(`❌ Error fetching students for teacher ${teacherId}:`, error);
-      return [];
-    }
-  }
-
-  // ============================
-  // 📈 ENHANCED ANALYTICS METHODS
-  // ============================
-
-  async getAttendanceAnalytics(filters: {
-    courseId?: number;
-    studentId?: number;
-    startDate?: string;
-    endDate?: string;
-  } = {}): Promise<any> {
-    try {
-      const params = new URLSearchParams();
-      
-      if (filters.courseId) params.append('course_id', filters.courseId.toString());
-      if (filters.studentId) params.append('student_id', filters.studentId.toString());
-      if (filters.startDate) params.append('start_date', filters.startDate);
-      if (filters.endDate) params.append('end_date', filters.endDate);
-      
-      const queryString = params.toString();
-      const url = queryString ? `/attendance/analytics/?${queryString}` : '/attendance/analytics/';
-      
-      return await this.makeRequest(url);
-    } catch (error) {
-      console.warn('Attendance analytics endpoint not available');
-      return {
-        total_records: 0,
-        present_count: 0,
-        absent_count: 0,
-        late_count: 0,
-        attendance_rate: 0,
-        trend_data: []
-      };
-    }
-  }
-
-  async getCourseAttendanceRate(courseId: number): Promise<number> {
-    try {
-      const analytics = await this.getAttendanceAnalytics({ courseId });
-      return analytics.attendance_rate || 0;
-    } catch (error) {
-      console.error(`❌ Error getting attendance rate for course ${courseId}:`, error);
-      return 0;
-    }
-  }
-
-  async getStudentAttendanceRate(studentId: number): Promise<number> {
-    try {
-      const analytics = await this.getAttendanceAnalytics({ studentId });
-      return analytics.attendance_rate || 0;
-    } catch (error) {
-      console.error(`❌ Error getting attendance rate for student ${studentId}:`, error);
-      return 0;
-    }
-  }
-
-  // ============================
-  // 🔧 BULK OPERATIONS
-  // ============================
-
-  async bulkMarkAttendance(attendanceRecords: Array<{
-    student: number;
-    course: number;
-    status: string;
-    notes?: string;
-  }>): Promise<any> {
-    try {
-      const results = [];
-      
-      for (const record of attendanceRecords) {
-        try {
-          const result = await this.markAttendanceWithValidation(record);
-          results.push({ success: true, record, result });
-        } catch (error) {
-          results.push({ success: false, record, error: error.message });
-        }
-      }
-      
-      return {
-        total: attendanceRecords.length,
-        successful: results.filter(r => r.success).length,
-        failed: results.filter(r => !r.success).length,
-        results
-      };
-    } catch (error) {
-      console.error('❌ Error in bulk attendance marking:', error);
-      throw error;
-    }
-  }
-
-  async bulkEnrollStudentsInCourse(courseId: number, studentIds: number[]): Promise<any> {
-    try {
-      return await this.enrollStudentsInCourse(courseId, studentIds);
-    } catch (error) {
-      console.error(`❌ Error bulk enrolling students in course ${courseId}:`, error);
-      throw error;
-    }
-  }
-
-  // ============================
-  // 🔍 SEARCH & FILTERING HELPERS
-  // ============================
-
-  async searchStudents(query: string, filters?: Record<string, any>): Promise<any[]> {
-    try {
-      const searchFilters = {
-        search: query,
-        ...filters
-      };
-      
-      const response = await this.getStudents(searchFilters);
-      return response.results || response || [];
-    } catch (error) {
-      console.error('❌ Error searching students:', error);
-      return [];
-    }
-  }
-
-  async searchCourses(query: string, filters?: Record<string, any>): Promise<any[]> {
-    try {
-      const searchFilters = {
-        search: query,
-        ...filters
-      };
-      
-      const response = await this.getCourses(searchFilters);
-      return response.results || response || [];
-    } catch (error) {
-      console.error('❌ Error searching courses:', error);
-      return [];
-    }
-  }
-
-  // ============================
-  // 📱 MOBILE APP COMPATIBILITY
-  // ============================
-
-  async getMobileAppInfo(): Promise<any> {
-    try {
-      return await this.makeRequest('/mobile/app-info/');
-    } catch (error) {
-      console.warn('Mobile app info endpoint not available');
-      return {
-        version: '1.0.0',
-        features: ['attendance', 'face_recognition'],
-        status: 'active'
-      };
-    }
-  }
-
-  async syncMobileData(data: any): Promise<any> {
-    try {
-      return await this.makeRequest('/mobile/sync/', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (error) {
-      console.warn('Mobile sync endpoint not available');
-      return { success: false, message: 'Sync not available' };
-    }
-  }
-
-  // ============================
-  // 📊 REPORTING METHODS
-  // ============================
-
-  async generateAttendanceReport(filters: {
-    courseId?: number;
-    studentId?: number;
-    startDate?: string;
-    endDate?: string;
-    format?: 'json' | 'csv' | 'pdf';
-  }): Promise<any> {
-    try {
-      const params = new URLSearchParams();
-      
-      if (filters.courseId) params.append('course_id', filters.courseId.toString());
-      if (filters.studentId) params.append('student_id', filters.studentId.toString());
-      if (filters.startDate) params.append('start_date', filters.startDate);
-      if (filters.endDate) params.append('end_date', filters.endDate);
-      if (filters.format) params.append('format', filters.format);
-      
-      const queryString = params.toString();
-      const url = `/reports/attendance/?${queryString}`;
-      
-      return await this.makeRequest(url);
-    } catch (error) {
-      console.warn('Attendance report endpoint not available');
-      return null;
-    }
-  }
-
-  async exportData(type: 'students' | 'courses' | 'attendance', format: 'csv' | 'xlsx' = 'csv'): Promise<any> {
-    try {
-      return await this.makeRequest(`/export/${type}/?format=${format}`);
-    } catch (error) {
-      console.warn(`Export ${type} endpoint not available`);
-      return null;
-    }
+    return data;
   }
 }
 
-// Export singleton instance
 export const djangoApi = new DjangoApiService();

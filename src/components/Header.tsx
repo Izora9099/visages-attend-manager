@@ -3,7 +3,6 @@
 import { Menu, Bell, Search, User, Settings, LogOut, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ConnectionStatus } from "./ConnectionStatus";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -68,53 +67,22 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
     navigate('/system-settings');
   };
 
-  // Get display name for user
   const getDisplayName = () => {
     if (!user) return "Loading...";
-    
-    if (user.first_name) {
-      return user.first_name;
-    }
-    
-    if (user.name) {
-      return user.name.split(' ')[0]; // Get first part of name
-    }
-    
-    return user.username;
+    return user.first_name || user.username;
   };
 
-  // Get user initials for avatar
   const getUserInitials = () => {
     if (!user) return "U";
-    
     if (user.first_name && user.last_name) {
       return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
     }
-    
-    if (user.first_name) {
-      return user.first_name[0].toUpperCase();
-    }
-    
-    if (user.name) {
-      const nameParts = user.name.split(' ');
-      if (nameParts.length > 1) {
-        return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
-      }
-      return nameParts[0][0].toUpperCase();
-    }
-    
-    return user.username[0].toUpperCase();
+    return (user.first_name || user.username)[0].toUpperCase();
   };
 
-  // Get user role badge
   const getUserRole = () => {
     if (!user) return "User";
-    
-    if (user.is_superuser) {
-      return "Super Admin";
-    }
-    
-    return user.role || "User";
+    return user.is_superuser ? "Super Admin" : (user.role || "User");
   };
 
   return (
@@ -217,7 +185,6 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
           </DropdownMenu>
         </div>
         
-        <ConnectionStatus showDetailed={false} />
       </div>
     </header>
   );

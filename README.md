@@ -1,73 +1,103 @@
-# Welcome to your Lovable project
+# Visages Attend Manager
 
-## Project info
+A React-based attendance management dashboard for school administrators, teachers, and staff. The app includes role-based access, attendance tracking, timetable management, user profile management, reports, system settings, and a real-time backend health indicator.
 
-**URL**: https://lovable.dev/projects/2f9ad069-972e-4f51-859f-86d8754cd374
+## Key features
 
-## How can I edit this code?
+- Role-based navigation for Super Admin, Admin, Teacher, Staff, Parent, and Student users
+- Dashboard with attendance summaries and charts
+- Course and timetable management for administrators
+- Teacher attendance workflows with course-based filtering
+- Attendance records viewing, editing, and deletion
+- Admin user management and profile management
+- System settings for superuser configuration
+- Connection status monitor for Django backend availability
+- React Query data fetching, smart API retry handling, and token refresh support
 
-There are several ways of editing your application.
+## Project structure
 
-**Use Lovable**
+- `src/App.tsx` - app routing and protected routes
+- `src/contexts/AuthContext.tsx` - authentication, JWT storage, role handling
+- `src/components/` - main UI pages and reusable features
+- `src/services/djangoApi.ts` - Django backend integration and auth API
+- `src/services/timetableApi.ts` - timetable API adapter
+- `src/config/` - permission rules and menu definitions
+- `src/constants/roles.ts` - user role constants
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/2f9ad069-972e-4f51-859f-86d8754cd374) and start prompting.
+## Technology stack
 
-Changes made via Lovable will be committed automatically to this repo.
+- React 18
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui + Radix UI components
+- React Router DOM
+- React Query
+- Zod + React Hook Form
+- Recharts for analytics visualizations
 
-**Use your preferred IDE**
+## Local setup
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+1. Install dependencies
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+2. Start the frontend development server
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+3. Open the local URL shown by Vite (usually `http://localhost:5173`)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Backend integration
 
-**Use GitHub Codespaces**
+This frontend is designed to connect to a Django backend. It auto-detects a running backend at one of these endpoints:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `http://localhost:8000`
+- `http://127.0.0.1:8000`
+- `http://localhost:8080`
+- `http://192.168.1.100:8000`
 
-## What technologies are used for this project?
+If your backend uses a different host, set the environment variable:
 
-This project is built with:
+```sh
+VITE_API_BASE_URL=http://your-backend-host:8000
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+The frontend expects the Django API to provide authentication endpoints and attendance/timetable resources, including:
 
-## How can I deploy this project?
+- `/auth/login/`
+- `/auth/refresh/`
+- `/auth/user/`
+- `/api/timetable/entries/`
+- `/api/timetable/timeslots/`
+- `/api/timetable/rooms/`
 
-Simply open [Lovable](https://lovable.dev/projects/2f9ad069-972e-4f51-859f-86d8754cd374) and click on Share -> Publish.
+## Running a production build
 
-## Can I connect a custom domain to my Lovable project?
+```sh
+npm run build
+```
 
-Yes, you can!
+Preview the built app locally:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```sh
+npm run preview
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Notes
+
+- Login is handled via JWT tokens stored in `localStorage`
+- Protected pages are wrapped by `ProtectedRoute`
+- Menu items are displayed based on role and permission rules in `src/config/menuPermissions.ts`
+- The `ConnectionStatus` component checks backend availability regularly and shows offline status if the Django API cannot be reached
+
+## Useful commands
+
+- `npm run dev` - start development server
+- `npm run build` - build app for production
+- `npm run preview` - preview production build locally
+- `npm run lint` - run ESLint checks

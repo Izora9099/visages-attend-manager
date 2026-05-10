@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\" -Recurse -Force | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | ForEach-Object { $_ -replace [regex]::Escape\\(\"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\"\\), \".\" })",
+      "PowerShell(tree c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager -L 3 -I 'node_modules|dist|.git' 2>$null)",
+      "PowerShell(head -60)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\\\\src\\\\config\\\\EnhancedPermission.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\\\\src\\\\config\\\\menuPermissions.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\\\\src\\\\utils\\\\permissionChecker.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\DELL\\\\Codium\\\\visages-attend-manager\\\\src\\\\constants\\\\roles.ts\" -Force)",
+      "Bash(Write-Output \"Deleted\")",
+      "Bash(rm \"c:/Users/DELL/Codium/visages-attend-manager/src/config/EnhancedPermission.ts\" \"c:/Users/DELL/Codium/visages-attend-manager/src/config/menuPermissions.ts\" \"c:/Users/DELL/Codium/visages-attend-manager/src/utils/permissionChecker.ts\" \"c:/Users/DELL/Codium/visages-attend-manager/src/constants/roles.ts\" && echo \"Deleted\")",
+      "Bash(npm run *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\DELL\\Codium\\visages-attend-manager\\src\\config"
+    ]
+  }
+}

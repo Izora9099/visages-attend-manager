@@ -1,283 +1,23 @@
-// src/components/TimetableGrid.tsx
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import { CalendarDays, Clock, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { djangoApi } from '@/services/djangoApi';
 
-// Updated interfaces to match your Django backend
-interface TimeSlot {
+interface FlatEntry {
   id: number;
-  day_of_week: number; // 0 = Monday, 4 = Friday
-  day_name: string;
-  start_time: string; // HH:MM format
-  end_time: string; // HH:MM format
-  duration_minutes: number;
-}
-
-interface Room {
-  id: number;
-  name: string;
-  capacity: number;
-  building?: string;
-  floor?: string;
-  equipment?: string[];
-  is_available: boolean;
-}
-
-interface Course {
-  id: number;
-  course_code: string;
   course_name: string;
-  credits: number;
-  level: string;
+  course_code: string;
+  teacher_name: string;
+  room: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
   department: string;
+  level: string;
 }
-
-interface Teacher {
-  id: number;
-  username: string;
-  first_name: string;
-  last_name: string;
-  full_name: string;
-  email: string;
-}
-
-interface TimetableEntry {
-  id: number;
-  course: Course;
-  teacher: Teacher;
-  time_slot: TimeSlot;
-  room: Room;
-  academic_year: string;
-  semester: number;
-  is_active: boolean;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Department {
-  id: number;
-  department_name: string;
-  department_code: string;
-  is_active: boolean;
-}
-
-// Updated API service with fallback for missing endpoints
-const timetableApi = {
-  async getTimetableEntries(filters: Record<string, any> = {}): Promise<TimetableEntry[]> {
-    try {
-      const token = localStorage.getItem('access_token');
-      const queryParams = new URLSearchParams();
-      
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, value.toString());
-        }
-      });
-      
-      const url = `http://localhost:8000/api/timetable/entries/?${queryParams}`;
-      console.log('🔗 Fetching timetable from:', url);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      });
-      
-      if (response.status === 404) {
-        console.warn('⚠️ Timetable API endpoints not found. Using mock data.');
-        // Return mock data for demonstration
-        return this.getMockTimetableData();
-      }
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('📊 Timetable data received:', data);
-      return Array.isArray(data) ? data : [];
-      
-    } catch (error) {
-      console.error('❌ Failed to fetch timetable:', error);
-      console.log('🔄 Falling back to mock data');
-      return this.getMockTimetableData();
-    }
-  },
-
-  async getTimeSlots(): Promise<TimeSlot[]> {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('http://localhost:8000/api/timetable/timeslots/', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      });
-      
-      if (response.status === 404) {
-        console.warn('⚠️ TimeSlots API endpoint not found. Using default slots.');
-        return this.getDefaultTimeSlots();
-      }
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      return Array.isArray(data) ? data : this.getDefaultTimeSlots();
-      
-    } catch (error) {
-      console.error('❌ Failed to fetch time slots:', error);
-      return this.getDefaultTimeSlots();
-    }
-  },
-
-  getDefaultTimeSlots(): TimeSlot[] {
-    return [
-      { id: 1, day_of_week: 0, day_name: 'All Days', start_time: '07:00', end_time: '09:00', duration_minutes: 120 },
-      { id: 2, day_of_week: 0, day_name: 'All Days', start_time: '09:30', end_time: '11:30', duration_minutes: 120 },
-      { id: 3, day_of_week: 0, day_name: 'All Days', start_time: '12:00', end_time: '14:00', duration_minutes: 120 },
-      { id: 4, day_of_week: 0, day_name: 'All Days', start_time: '14:30', end_time: '16:30', duration_minutes: 120 },
-      { id: 5, day_of_week: 0, day_name: 'All Days', start_time: '17:00', end_time: '19:00', duration_minutes: 120 },
-    ];
-  },
-
-  getMockTimetableData(): TimetableEntry[] {
-    return [
-      {
-        id: 1,
-        course: {
-          id: 1,
-          course_code: 'CS201',
-          course_name: 'Data Structures & Algorithms',
-          credits: 3,
-          level: '200',
-          department: '1'
-        },
-        teacher: {
-          id: 1,
-          username: 'john.doe',
-          first_name: 'John',
-          last_name: 'Doe',
-          full_name: 'John Doe',
-          email: 'john.doe@faceit.edu'
-        },
-        time_slot: {
-          id: 1,
-          day_of_week: 0,
-          day_name: 'Monday',
-          start_time: '07:00',
-          end_time: '09:00',
-          duration_minutes: 120
-        },
-        room: {
-          id: 1,
-          name: 'BGFL',
-          capacity: 100,
-          building: 'Main Building',
-          equipment: ['Projector', 'Sound System'],
-          is_available: true
-        },
-        academic_year: '2024-2025',
-        semester: 2,
-        is_active: true,
-        notes: 'Mock data - run timetable generator script',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        course: {
-          id: 2,
-          course_code: 'MECH301',
-          course_name: 'Fluid Mechanics',
-          credits: 3,
-          level: '300',
-          department: '2'
-        },
-        teacher: {
-          id: 2,
-          username: 'jane.smith',
-          first_name: 'Jane',
-          last_name: 'Smith',
-          full_name: 'Jane Smith',
-          email: 'jane.smith@faceit.edu'
-        },
-        time_slot: {
-          id: 2,
-          day_of_week: 1,
-          day_name: 'Tuesday',
-          start_time: '09:30',
-          end_time: '11:30',
-          duration_minutes: 120
-        },
-        room: {
-          id: 2,
-          name: 'Hall 1',
-          capacity: 80,
-          building: 'Academic Block A',
-          equipment: ['Projector', 'Whiteboard'],
-          is_available: true
-        },
-        academic_year: '2024-2025',
-        semester: 2,
-        is_active: true,
-        notes: 'Mock data - run timetable generator script',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        course: {
-          id: 3,
-          course_code: 'ELEC401',
-          course_name: 'Power Systems II',
-          credits: 3,
-          level: '400',
-          department: '3'
-        },
-        teacher: {
-          id: 3,
-          username: 'mike.wilson',
-          first_name: 'Mike',
-          last_name: 'Wilson',
-          full_name: 'Mike Wilson',
-          email: 'mike.wilson@faceit.edu'
-        },
-        time_slot: {
-          id: 3,
-          day_of_week: 2,
-          day_name: 'Wednesday',
-          start_time: '12:00',
-          end_time: '14:00',
-          duration_minutes: 120
-        },
-        room: {
-          id: 3,
-          name: 'Hall 2',
-          capacity: 80,
-          building: 'Academic Block B',
-          equipment: ['Projector', 'Lab Equipment'],
-          is_available: true
-        },
-        academic_year: '2024-2025',
-        semester: 2,
-        is_active: true,
-        notes: 'Mock data - run timetable generator script',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ];
-  }
-};
 
 interface TimetableGridProps {
   academicYear?: string;
@@ -286,139 +26,39 @@ interface TimetableGridProps {
   level?: string;
 }
 
-export const TimetableGrid = ({ 
-  academicYear = "2024-2025", 
-  semester = 2,
-  department,
-  level 
-}: TimetableGridProps) => {
-  const [entries, setEntries] = useState<TimetableEntry[]>([]);
-  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+const DEPT_COLORS: Record<string, string> = {
+  'Computer Science & Engineering': 'bg-blue-100 text-blue-800 border-blue-200',
+  'Electrical & Electronic Engineering': 'bg-green-100 text-green-800 border-green-200',
+  'Business Administration': 'bg-purple-100 text-purple-800 border-purple-200',
+  'Mathematics & Statistics': 'bg-orange-100 text-orange-800 border-orange-200',
+};
+const DEFAULT_COLOR = 'bg-gray-100 text-gray-800 border-gray-200';
+
+export const TimetableGrid = ({ department, level }: TimetableGridProps) => {
+  const [entries, setEntries] = useState<FlatEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [departmentColors, setDepartmentColors] = useState<Record<string, string>>({});
-  const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
 
-  // Available Tailwind colors for departments
-  const availableColors = [
-    'bg-blue-100 text-blue-800 border-blue-200',
-    'bg-green-100 text-green-800 border-green-200',
-    'bg-purple-100 text-purple-800 border-purple-200',
-    'bg-orange-100 text-orange-800 border-orange-200',
-    'bg-pink-100 text-pink-800 border-pink-200',
-    'bg-indigo-100 text-indigo-800 border-indigo-200',
-    'bg-yellow-100 text-yellow-800 border-yellow-200',
-    'bg-red-100 text-red-800 border-red-200',
-    'bg-teal-100 text-teal-800 border-teal-200',
-    'bg-cyan-100 text-cyan-800 border-cyan-200',
-    'bg-lime-100 text-lime-800 border-lime-200',
-    'bg-amber-100 text-amber-800 border-amber-200',
-  ];
-
-  // Fetch departments
-  const fetchDepartments = async () => {
+  const loadEntries = async () => {
+    setLoading(true);
     try {
-      const response = await djangoApi.getDepartments();
-      const depts = Array.isArray(response) ? response : response?.results || [];
-      setDepartments(depts);
-      
-      // Create a map of department IDs to names for easy lookup
-      const deptMap = depts.reduce((acc, dept) => ({
-        ...acc,
-        [dept.id]: dept.department_name
-      }), {});
-      
-      // Assign colors to departments using their IDs as keys
-      const colors: Record<string, string> = {};
-      depts.forEach((dept, index) => {
-        colors[dept.id] = availableColors[index % availableColors.length];
-      });
-      
-      setDepartmentColors(colors);
-      setDepartmentMap(deptMap);
-    } catch (err) {
-      console.error('Failed to fetch departments:', err);
-      setError('Failed to load department information');
+      const data = await djangoApi.getTimetableEntries({ department, level });
+      setEntries(Array.isArray(data) ? data : []);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Get color based on department ID
-  const getDepartmentColor = (departmentId: string | number) => {
-    return departmentColors[departmentId] || 'bg-gray-100 text-gray-800 border-gray-200';
-  };
+  useEffect(() => { loadEntries(); }, [department, level]);
 
-  // Get department name by ID
-  const getDepartmentName = (departmentId: string | number) => {
-    return departmentMap[departmentId] || `Department ${departmentId}`;
-  };
+  // Collect unique time ranges sorted by start time
+  const timeRanges = Array.from(
+    new Map(entries.map(e => [`${e.start_time}-${e.end_time}`, { start: e.start_time, end: e.end_time }])).values()
+  ).sort((a, b) => a.start.localeCompare(b.start));
 
-  // Load data when component mounts
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        await fetchDepartments();
-        
-        // Load timetable entries
-        const filters: Record<string, any> = { academic_year: academicYear, semester };
-        if (department) filters.department = department;
-        if (level) filters.level = level;
-        
-        const [entriesData, slots] = await Promise.all([
-          timetableApi.getTimetableEntries(filters),
-          timetableApi.getTimeSlots()
-        ]);
-        
-        setEntries(entriesData);
-        setTimeSlots(slots.length > 0 ? slots : timetableApi.getDefaultTimeSlots());
-      } catch (err) {
-        console.error('Error loading timetable data:', err);
-        setError('Failed to load timetable data. Please try again later.');
-        setEntries(timetableApi.getMockTimetableData());
-        setTimeSlots(timetableApi.getDefaultTimeSlots());
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, [academicYear, semester, department, level]);
-
-  // Days of the week for the grid
-  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const DAY_INDICES = [0, 1, 2, 3, 4]; // Corresponding to day_of_week values
-
-  // Default time slots if backend doesn't have them
-  const defaultTimeSlots = [
-    { id: 1, day_of_week: 0, day_name: 'All Days', start_time: '07:00', end_time: '09:00', duration_minutes: 120 },
-    { id: 2, day_of_week: 0, day_name: 'All Days', start_time: '09:30', end_time: '11:30', duration_minutes: 120 },
-    { id: 3, day_of_week: 0, day_name: 'All Days', start_time: '12:00', end_time: '14:00', duration_minutes: 120 },
-    { id: 4, day_of_week: 0, day_name: 'All Days', start_time: '14:30', end_time: '16:30', duration_minutes: 120 },
-    { id: 5, day_of_week: 0, day_name: 'All Days', start_time: '17:00', end_time: '19:00', duration_minutes: 120 },
-  ];
-
-  // Get unique time periods (ignoring day_of_week for slots)
-  const getUniqueTimeSlots = () => {
-    const uniqueSlots = new Map();
-    timeSlots.forEach(slot => {
-      const key = `${slot.start_time}-${slot.end_time}`;
-      if (!uniqueSlots.has(key)) {
-        uniqueSlots.set(key, slot);
-      }
-    });
-    return Array.from(uniqueSlots.values()).sort((a, b) => a.start_time.localeCompare(b.start_time));
-  };
-
-  // Get entries for a specific day and time slot
-  const getEntriesForSlot = (dayIndex: number, timeSlot: TimeSlot): TimetableEntry[] => {
-    return entries.filter(entry => 
-      entry.time_slot.day_of_week === dayIndex && 
-      entry.time_slot.start_time === timeSlot.start_time
-    );
-  };
-
-  const uniqueTimeSlots = getUniqueTimeSlots();
+  const getSlotEntries = (day: string, start: string) =>
+    entries.filter(e => e.day_of_week === day && e.start_time === start);
 
   if (loading) {
     return (
@@ -431,39 +71,15 @@ export const TimetableGrid = ({
     );
   }
 
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="py-6">
-          <div className="text-center mb-4">
-            <AlertCircle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-            <h3 className="text-lg font-medium mb-2">API Endpoints Not Available</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Showing mock data. Run the timetable generator script to populate real data.
-            </p>
-            <Button onClick={fetchDepartments} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   if (entries.length === 0) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
           <div className="text-center">
             <CalendarDays className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">No timetable entries found</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Run the timetable generator script to create schedule entries
-            </p>
-            <Button onClick={fetchDepartments} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+            <p className="text-sm text-gray-600">No timetable entries found for this filter.</p>
+            <Button onClick={loadEntries} variant="outline" className="mt-4">
+              <RefreshCw className="h-4 w-4 mr-2" /> Refresh
             </Button>
           </div>
         </CardContent>
@@ -476,90 +92,50 @@ export const TimetableGrid = ({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5" />
-            Weekly Timetable
+            <CalendarDays className="h-5 w-5" /> Weekly Timetable
           </CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{academicYear}</Badge>
-            <Badge variant="outline">Semester {semester}</Badge>
-            <Button onClick={fetchDepartments} size="sm" variant="outline">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button onClick={loadEntries} size="sm" variant="outline">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <div className="min-w-[800px]">
-            {/* Grid Header */}
+            {/* Header row */}
             <div className="grid grid-cols-6 gap-2 mb-4">
               <div className="p-3 font-semibold text-center bg-gray-100 rounded">
-                <Clock className="h-4 w-4 mx-auto mb-1" />
-                Time
+                <Clock className="h-4 w-4 mx-auto mb-1" /> Time
               </div>
-              {DAYS.map((day) => (
-                <div key={day} className="p-3 font-semibold text-center bg-gray-100 rounded">
-                  {day}
-                </div>
+              {DAYS.map(day => (
+                <div key={day} className="p-3 font-semibold text-center bg-gray-100 rounded">{day}</div>
               ))}
             </div>
 
-            {/* Time Slot Rows */}
+            {/* Time rows */}
             <div className="space-y-2">
-              {uniqueTimeSlots.map((timeSlot) => (
-                <div key={`${timeSlot.start_time}-${timeSlot.end_time}`} className="grid grid-cols-6 gap-2">
-                  {/* Time Column */}
+              {timeRanges.map(({ start, end }) => (
+                <div key={`${start}-${end}`} className="grid grid-cols-6 gap-2">
                   <div className="p-3 bg-gray-50 rounded flex flex-col items-center justify-center text-sm">
-                    <div className="font-medium">{timeSlot.start_time}</div>
+                    <div className="font-medium">{start}</div>
                     <div className="text-xs text-gray-500">to</div>
-                    <div className="font-medium">{timeSlot.end_time}</div>
+                    <div className="font-medium">{end}</div>
                   </div>
-
-                  {/* Day Columns */}
-                  {DAY_INDICES.map((dayIndex, idx) => {
-                    const dayEntries = getEntriesForSlot(dayIndex, timeSlot);
-                    
+                  {DAYS.map(day => {
+                    const cell = getSlotEntries(day, start);
                     return (
-                      <div
-                        key={`${DAYS[idx]}-${timeSlot.start_time}`}
-                        className={cn(
-                          "min-h-[100px] p-2 border-2 border-dashed border-gray-200 rounded transition-all",
-                          dayEntries.length > 0 && "border-solid border-gray-300"
-                        )}
-                      >
+                      <div key={day} className={cn('min-h-[100px] p-2 border-2 border-dashed border-gray-200 rounded', cell.length > 0 && 'border-solid border-gray-300')}>
                         <div className="space-y-2">
-                          {dayEntries.map((entry) => (
-                            <div
-                              key={entry.id}
-                              className={cn(
-                                "p-2 rounded border text-xs",
-                                getDepartmentColor(entry.course.department)
-                              )}
-                            >
-                              <div className="font-semibold mb-1">
-                                {entry.course.course_code}
-                              </div>
-                              <div className="text-xs mb-2 line-clamp-2">
-                                {entry.course.course_name}
-                              </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-gray-600">
-                                  {entry.teacher.full_name || `${entry.teacher.first_name} ${entry.teacher.last_name}`}
-                                </div>
-                                <div className="text-xs text-gray-600">
-                                  {entry.room.name}
-                                </div>
-                                <Badge variant="outline" className="text-xs">
-                                  {entry.course.level}
-                                </Badge>
-                              </div>
+                          {cell.map(entry => (
+                            <div key={entry.id} className={cn('p-2 rounded border text-xs', DEPT_COLORS[entry.department] ?? DEFAULT_COLOR)}>
+                              <div className="font-semibold">{entry.course_code}</div>
+                              <div className="mb-1 line-clamp-2">{entry.course_name}</div>
+                              <div className="text-gray-600">{entry.teacher_name}</div>
+                              <div className="text-gray-600">{entry.room}</div>
+                              <Badge variant="outline" className="text-xs mt-1">{entry.level}</Badge>
                             </div>
                           ))}
-                          {dayEntries.length === 0 && (
-                            <div className="flex items-center justify-center h-full text-gray-400 text-xs">
-                              No class
-                            </div>
-                          )}
+                          {cell.length === 0 && <div className="flex items-center justify-center h-full text-gray-400 text-xs">No class</div>}
                         </div>
                       </div>
                     );
@@ -571,31 +147,13 @@ export const TimetableGrid = ({
         </div>
 
         {/* Legend */}
-        <div className="mt-6 pt-4 border-t">
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm font-medium mr-2">Departments:</span>
-            {departments.length > 0 ? (
-              departments.map(dept => (
-                <Badge 
-                  key={dept.id} 
-                  variant="outline" 
-                  className={cn("text-xs", getDepartmentColor(dept.id))}
-                >
-                  {dept.department_name}
-                </Badge>
-              ))
-            ) : (
-              <span className="text-sm text-gray-500">No departments found</span>
-            )}
-          </div>
+        <div className="mt-6 pt-4 border-t flex flex-wrap gap-2 items-center">
+          <span className="text-sm font-medium mr-2">Departments:</span>
+          {Object.entries(DEPT_COLORS).map(([name, cls]) => (
+            <Badge key={name} variant="outline" className={cn('text-xs', cls)}>{name}</Badge>
+          ))}
         </div>
-
-        {/* Summary */}
-        <div className="mt-4 text-sm text-gray-600">
-          <p>
-            Showing {entries.length} scheduled classes across {uniqueTimeSlots.length} time slots
-          </p>
-        </div>
+        <p className="mt-4 text-sm text-gray-600">{entries.length} scheduled classes across {timeRanges.length} time slots</p>
       </CardContent>
     </Card>
   );

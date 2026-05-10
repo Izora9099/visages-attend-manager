@@ -1,5 +1,4 @@
-// Modified Students.tsx - Using Separate StudentCreateDialog Component
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,65 +7,24 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Plus, Search, Edit, Trash2, Eye, AlertCircle, RefreshCw, Users, ChevronLeft, ChevronRight } from "lucide-react";
-import { djangoApi } from "@/services/djangoApi";
+import { Plus, Search, Edit, Trash2, Eye, RefreshCw, Users, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { StudentCreateDialog } from "./StudentCreateDialog";
+import {
+  useDepartments,
+  useSpecializations,
+  useLevels,
+  useStudents,
+  useUpdateStudent,
+  useDeleteStudent,
+  useCreateStudent,
+} from "@/hooks/queries";
+import type { Student, StudentFilters } from "@/types";
 
-interface Student {
-  id: number;
-  first_name: string;
-  last_name: string;
-  full_name?: string;
-  matric_number: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  department: number;
-  department_name?: string;
-  specialization?: number;
-  specialization_name?: string;
-  level: number;
-  level_name?: string;
-  enrolled_courses: number[];
-  enrolled_courses_count?: number;
-  status: 'active' | 'inactive' | 'graduated' | 'suspended';
-  registration_date: string;
-  attendance_rate: number;
-  academic_year: string;
-  created_at: string;
-  updated_at: string;
-  date_of_birth?: string;
-  gender?: string;
-  emergency_contact?: string;
-  emergency_phone?: string;
-  face_encoding_model?: string;
-}
+// ─── Local types ──────────────────────────────────────────────────────────────
 
-interface Department {
-  id: number;
-  department_name: string;
-  department_code: string;
-  is_active: boolean;
-}
-
-interface Specialization {
-  id: number;
-  specialization_name: string;
-  specialization_code: string;
-  department: number;
-  is_active: boolean;
-}
-
-interface Level {
-  id: number;
-  level_name: string;
-  level_code: string;
-  is_active: boolean;
-}
-
-interface StudentFormData {
+interface EditFormData {
   first_name: string;
   last_name: string;
   matric_number: string;
@@ -80,875 +38,152 @@ interface StudentFormData {
   gender: string;
   emergency_contact: string;
   emergency_phone: string;
-  face_encoding_model: string;
 }
 
-interface Filters {
-  search?: string;
-  department?: number;
-  specialization?: number;
-  level?: number;
-  status?: string;
+type EditFormErrors = Partial<Record<keyof EditFormData, string>>;
+
+const EMPTY_FORM: EditFormData = {
+  first_name: "", last_name: "", matric_number: "", email: "",
+  phone: "", address: "", department: 0, specialization: 0, level: 0,
+  date_of_birth: "", gender: "", emergency_contact: "", emergency_phone: "",
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "active":    return "bg-green-100 text-green-800";
+    case "inactive":  return "bg-gray-100 text-gray-800";
+    case "graduated": return "bg-blue-100 text-blue-800";
+    case "suspended": return "bg-red-100 text-red-800";
+    default:          return "bg-gray-100 text-gray-800";
+  }
 }
 
-interface Pagination {
-  page: number;
-  pageSize: number;
-  count: number;
-  totalPages: number;
+function validateEditForm(data: EditFormData): EditFormErrors {
+  const errors: EditFormErrors = {};
+  if (!data.first_name.trim())    errors.first_name    = "First name is required";
+  if (!data.last_name.trim())     errors.last_name     = "Last name is required";
+  if (!data.matric_number.trim()) errors.matric_number = "Matriculation number is required";
+  if (!data.email.trim())         errors.email         = "Email is required";
+  if (data.email && !/\S+@\S+\.\S+/.test(data.email)) errors.email = "Email is invalid";
+  if (!data.department)           errors.department    = "Department is required";
+  if (!data.level)                errors.level         = "Level is required";
+  return errors;
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export const Students = () => {
-  // State management
-  const [students, setStudents] = useState<Student[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [specializations, setSpecializations] = useState<Specialization[]>([]);
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  
-  // Pagination
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1,
-    pageSize: 10,
-    count: 0,
-    totalPages: 0
-  });
+  const [filters, setFilters] = useState<StudentFilters>({});
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
-  // Filters
-  const [filters, setFilters] = useState<Filters>({});
-
-  // Edit form state
-  const [formData, setFormData] = useState<StudentFormData>({
-    first_name: "",
-    last_name: "",
-    matric_number: "",
-    email: "",
-    phone: "",
-    address: "",
-    department: 0,
-    specialization: 0,
-    level: 0,
-    date_of_birth: "",
-    gender: "",
-    emergency_contact: "",
-    emergency_phone: "",
-    face_encoding_model: "cnn"
-  });
-
-  const [formErrors, setFormErrors] = useState<Partial<StudentFormData>>({});
-  const [formLoading, setFormLoading] = useState(false);
-
-  // Dialog states
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isCreateOpen,   setIsCreateOpen]   = useState(false);
+  const [isEditOpen,     setIsEditOpen]     = useState(false);
+  const [isViewOpen,     setIsViewOpen]     = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
+  const [editForm,       setEditForm]       = useState<EditFormData>(EMPTY_FORM);
+  const [editErrors,     setEditErrors]     = useState<EditFormErrors>({});
 
-  // Load initial data
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  // ── Queries ──
+  const { data: departments = [] } = useDepartments();
+  const { data: specializations = [] } = useSpecializations();
+  const { data: levels = [] } = useLevels();
+  const {
+    data: studentsPage,
+    isLoading,
+    isError,
+    refetch,
+  } = useStudents({ ...filters, page, page_size: PAGE_SIZE });
 
-  // Load students when filters change
-  useEffect(() => {
-    loadStudents(pagination.page);
-  }, [filters]);
+  const students: Student[] = studentsPage?.results ?? [];
+  const totalCount: number  = studentsPage?.count ?? 0;
+  const totalPages          = Math.ceil(totalCount / PAGE_SIZE);
 
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      console.log('Loading initial data...');
-      
-      // Load academic structure data concurrently
-      const [deptResponse, specResponse, levelResponse] = await Promise.all([
-        djangoApi.getDepartments().catch((err) => {
-          console.error('Error loading departments:', err);
-          return { results: [] };
-        }),
-        djangoApi.getSpecializations().catch((err) => {
-          console.error('Error loading specializations:', err);
-          return { results: [] };
-        }),
-        djangoApi.getLevels().catch((err) => {
-          console.error('Error loading levels:', err);
-          return { results: [] };
-        })
-      ]);
+  // ── Mutations ──
+  const createStudent = useCreateStudent();
+  const updateStudent = useUpdateStudent();
+  const deleteStudent = useDeleteStudent();
 
-      // Log the raw responses
-      console.log('Departments response:', deptResponse);
-      console.log('Specializations response:', specResponse);
-      console.log('Levels response:', levelResponse);
-
-      // Handle different response formats
-      const depts = Array.isArray(deptResponse) ? deptResponse : deptResponse?.results || [];
-      const specs = Array.isArray(specResponse) ? specResponse : specResponse?.results || [];
-      const lvls = Array.isArray(levelResponse) ? levelResponse : levelResponse?.results || [];
-      
-      console.log('Processed departments:', depts);
-      console.log('Processed specializations:', specs);
-      console.log('Processed levels:', lvls);
-
-      setDepartments(depts);
-      setSpecializations(specs);
-      setLevels(lvls);
-
-      // Load initial students
-      loadStudents(1);
-      
-    } catch (err: any) {
-      console.error("Failed to load initial data:", err);
-      setError("Failed to load initial data. Some features may not work properly.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStudents = async (page = 1) => {
-    try {
-      setLoading(true);
-      setError("");
-      console.log(`Loading students page ${page} with filters:`, filters);
-      
-      // Filter out undefined values from filters before sending to API
-      const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          acc[key] = value;
-        }
-        return acc;
-      }, {} as Record<string, any>);
-      
-      const params = {
-        page,
-        page_size: pagination.pageSize,
-        ...cleanFilters
-      };
-      
-      console.log('Sending request with params:', params);
-      const response = await djangoApi.getStudents(params);
-      console.log('Received students response:', response);
-      
-      // Handle different response formats and validate data
-      const studentsData = Array.isArray(response) ? response : response?.results || [];
-      const totalCount = response?.count || studentsData.length;
-      
-      console.log('Raw students data:', studentsData);
-      
-      // Transform and validate student data with safe defaults
-      const transformedStudents: Student[] = studentsData
-        .filter(student => {
-          const isValid = student && typeof student === 'object' && student.id;
-          if (!isValid) {
-            console.warn('Invalid student data filtered out:', student);
-          }
-          return isValid;
-        })
-        .map((student: any) => {
-          // Log the raw student data before transformation
-          console.log('Processing student:', student);
-          
-          // Handle different serializer formats from backend
-          let firstName = student.first_name;
-          let lastName = student.last_name;
-          
-          // If we only have full_name (from StudentListSerializer), split it
-          if (!firstName && !lastName && student.full_name) {
-            const nameParts = student.full_name.trim().split(' ');
-            firstName = nameParts[0] || 'Unknown';
-            lastName = nameParts.slice(1).join(' ') || 'Student';
-          }
-          
-          // Fallback to any name field if still missing
-          if (!firstName && !lastName && student.name) {
-            const nameParts = student.name.trim().split(' ');
-            firstName = nameParts[0] || 'Unknown';
-            lastName = nameParts.slice(1).join(' ') || 'Student';
-          }
-          
-          // Use the department, specialization, and level values directly from the backend
-          const departmentId = typeof student.department === 'object' ? student.department.id : student.department;
-          const departmentName = typeof student.department === 'object' ? student.department.department_name : student.department;
-          
-          const specializationId = typeof student.specialization === 'object' ? student.specialization.id : student.specialization;
-          const specializationName = typeof student.specialization === 'object' ? student.specialization.specialization_name : student.specialization;
-          
-          const levelId = typeof student.level === 'object' ? student.level.id : student.level;
-          const levelName = typeof student.level === 'object' ? student.level.level_name : student.level;
-          
-          const transformedStudent = {
-            id: student.id || 0,
-            first_name: firstName || 'Unknown',
-            last_name: lastName || 'Student',
-            full_name: student.full_name || student.name || `${firstName || 'Unknown'} ${lastName || 'Student'}`,
-            matric_number: student.matric_number || student.student_number || student.student_id || `TEMP${student.id}`,
-            email: student.email || '',
-            phone: student.phone || '',
-            address: student.address || '',
-            department: departmentId || 0,
-            department_name: departmentName || 'Unknown Department',
-            specialization: specializationId || null,
-            specialization_name: specializationName || '',
-            level: levelId || 0,
-            level_name: levelName || 'Unknown Level',
-            enrolled_courses: Array.isArray(student.enrolled_courses) ? student.enrolled_courses : [],
-            enrolled_courses_count: student.enrolled_courses_count || 0,
-            status: student.status || 'active',
-            registration_date: student.registration_date || student.registered_on || student.created_at || new Date().toISOString(),
-            attendance_rate: typeof student.attendance_rate === 'number' ? student.attendance_rate : 0,
-            academic_year: student.academic_year || new Date().getFullYear().toString(),
-            created_at: student.created_at || new Date().toISOString(),
-            updated_at: student.updated_at || new Date().toISOString(),
-            date_of_birth: student.date_of_birth || '',
-            gender: student.gender || '',
-            emergency_contact: student.emergency_contact || '',
-            emergency_phone: student.emergency_phone || '',
-            face_encoding_model: student.face_encoding_model || 'cnn'
-          };
-          
-          console.log('Transformed student:', transformedStudent);
-          return transformedStudent;
-        });
-      
-      console.log('Final transformed students:', transformedStudents);
-      setStudents(transformedStudents);
-      
-      const newPagination = {
-        page,
-        count: totalCount,
-        totalPages: Math.ceil(totalCount / pagination.pageSize)
-      };
-      
-      console.log('Updating pagination:', newPagination);
-      setPagination(prev => ({
-        ...prev,
-        ...newPagination
-      }));
-      
-    } catch (err: any) {
-      console.error("Failed to load students:", err);
-      setError("Failed to load students: " + (err.message || "Unknown error"));
-      setStudents([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFilterChange = (key: keyof Filters, value: any) => {
+  // ── Handlers ──
+  const handleFilterChange = (key: keyof StudentFilters, value: unknown) => {
     setFilters(prev => {
-      const newFilters = { ...prev };
-      
-      // Remove the filter if value is undefined, null, empty string, or "all"
+      const next = { ...prev };
       if (value === undefined || value === null || value === "" || value === "all") {
-        delete newFilters[key];
+        delete next[key as keyof typeof next];
       } else {
-        newFilters[key] = value;
+        (next as Record<string, unknown>)[key] = value;
       }
-      
-      return newFilters;
+      return next;
     });
-    setPagination(prev => ({ ...prev, page: 1 })); // Reset to first page when filtering
+    setPage(1);
   };
 
-  const resetEditForm = () => {
-    setFormData({
-      first_name: "",
-      last_name: "",
-      matric_number: "",
-      email: "",
-      phone: "",
-      address: "",
-      department: 0,
-      specialization: 0,
-      level: 0,
-      date_of_birth: "",
-      gender: "",
-      emergency_contact: "",
-      emergency_phone: "",
-      face_encoding_model: "cnn"
-    });
-    setFormErrors({});
-  };
-
-  // Handle data from StudentCreateDialog and convert to backend format
-  const handleCreateStudentFromDialog = async (studentData: StudentFormData & { face_image: File }) => {
+  const handleCreateFromDialog = async (data: EditFormData & { face_image: File }) => {
     try {
-      setLoading(true);
-      setError("");
-      
-      console.log("Student data received:", studentData);
-      console.log("Available departments:", departments);
-      console.log("Available specializations:", specializations);
-      console.log("Available levels:", levels);
-      
-      // Validate academic structure before sending
-      const selectedDepartment = departments.find(d => d.id === studentData.department);
-      const selectedLevel = levels.find(l => l.id === studentData.level);
-      let selectedSpecialization = null;
-      
-      if (studentData.specialization && studentData.specialization > 0) {
-        selectedSpecialization = specializations.find(s => s.id === studentData.specialization);
-        if (!selectedSpecialization) {
-          throw new Error(`Invalid specialization ID: ${studentData.specialization}`);
-        }
-        // Check if specialization belongs to the selected department
-        if (selectedSpecialization.department !== studentData.department) {
-          throw new Error(`Specialization ${selectedSpecialization.specialization_name} does not belong to the selected department`);
-        }
-      }
-      
-      if (!selectedDepartment) {
-        throw new Error(`Invalid department ID: ${studentData.department}. Available departments: ${departments.map(d => `${d.id}:${d.department_name}`).join(', ')}`);
-      }
-      
-      if (!selectedLevel) {
-        throw new Error(`Invalid level ID: ${studentData.level}. Available levels: ${levels.map(l => `${l.id}:${l.level_name}`).join(', ')}`);
-      }
-      
-      console.log("Validation passed:");
-      console.log("- Selected Department:", selectedDepartment);
-      console.log("- Selected Level:", selectedLevel);
-      console.log("- Selected Specialization:", selectedSpecialization);
-      
-      // Convert StudentCreateDialog data format to backend format
-      const formDataToSend = new FormData();
-      
-      // Add all fields in the format expected by the backend (matching the working version)
-      formDataToSend.append('first_name', studentData.first_name);
-      formDataToSend.append('last_name', studentData.last_name);
-      formDataToSend.append('matric_number', studentData.matric_number);
-      formDataToSend.append('email', studentData.email);
-      formDataToSend.append('phone', studentData.phone || '');
-      formDataToSend.append('address', studentData.address || '');
-      
-      // ⚠️ CRITICAL: Use the validated IDs
-      formDataToSend.append('department_id', selectedDepartment.id.toString());
-      if (selectedSpecialization) {
-        formDataToSend.append('specialization_id', selectedSpecialization.id.toString());
-      }
-      formDataToSend.append('level_id', selectedLevel.id.toString());
-      
-      // Add optional fields
-      if (studentData.date_of_birth) formDataToSend.append('date_of_birth', studentData.date_of_birth);
-      if (studentData.gender) formDataToSend.append('gender', studentData.gender);
-      if (studentData.emergency_contact) formDataToSend.append('emergency_contact', studentData.emergency_contact);
-      if (studentData.emergency_phone) formDataToSend.append('emergency_phone', studentData.emergency_phone);
-      if (studentData.face_encoding_model) formDataToSend.append('face_encoding_model', studentData.face_encoding_model);
-      
-      // Add face image - this is required for the register-student endpoint
-      if (studentData.face_image) {
-        console.log("Face image file:", studentData.face_image);
-        formDataToSend.append('image', studentData.face_image);
-      } else {
-        throw new Error("Face image is required for student registration");
-      }
-      
-      // Debug: Log all FormData entries
-      console.log("FormData entries being sent:");
-      for (let [key, value] of formDataToSend.entries()) {
-        if (key === 'image') {
-          console.log(`${key}:`, `File(${value.name}, ${value.size} bytes, ${value.type})`);
-        } else {
-          console.log(`${key}:`, value);
-        }
-      }
-      
-      // Use the register-student endpoint that handles face processing
-      const apiUrl = await djangoApi.getApiUrl();
-      const endpointUrl = `${apiUrl.replace('/api', '')}/api/register-student/`;
-      console.log("Sending request to:", endpointUrl);
-      
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        body: formDataToSend,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-          // Note: Don't set Content-Type header when using FormData - browser sets it automatically
-        }
-      });
-      
-      console.log("Response status:", response.status);
-      
-      // Try to get response text first to see what the server is returning
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
-      
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse response as JSON:", parseError);
-        throw new Error(`Server returned invalid JSON. Status: ${response.status}, Response: ${responseText}`);
-      }
-      
-      if (response.ok && result.status === 'success') {
-        setSuccess("Student created successfully with facial recognition!");
-        loadStudents(pagination.page); // Refresh the list
-      } else {
-        console.error("Server error:", result);
-        setError(result.message || result.error || `Server error: ${response.status} - ${responseText}`);
-      }
-      
-    } catch (err: any) {
-      console.error("Failed to create student:", err);
-      setError("Failed to create student: " + (err.message || "Unknown error"));
-    } finally {
-      setLoading(false);
+      await createStudent.mutateAsync(data as unknown as Record<string, unknown>);
+      toast.success("Student created successfully.");
+      setIsCreateOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create student.");
     }
   };
 
-  const validateEditForm = (): boolean => {
-    const errors: Partial<StudentFormData> = {};
-    
-    if (!formData.first_name.trim()) errors.first_name = "First name is required";
-    if (!formData.last_name.trim()) errors.last_name = "Last name is required";
-    if (!formData.matric_number.trim()) errors.matric_number = "Matriculation number is required";
-    if (!formData.email.trim()) errors.email = "Email is required";
-    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) errors.email = "Email is invalid";
-    if (!formData.department) errors.department = "Department is required";
-    if (!formData.level) errors.level = "Level is required";
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleEditStudent = (student: Student) => {
+  const openEdit = (student: Student) => {
     setEditingStudent(student);
-    setFormData({
-      first_name: student.first_name || '',
-      last_name: student.last_name || '',
-      matric_number: student.matric_number || '',
-      email: student.email || '',
-      phone: student.phone || '',
-      address: student.address || '',
-      department: student.department || 0,
-      specialization: student.specialization || 0,
-      level: student.level || 0,
-      date_of_birth: student.date_of_birth || '',
-      gender: student.gender || '',
-      emergency_contact: student.emergency_contact || '',
-      emergency_phone: student.emergency_phone || '',
-      face_encoding_model: student.face_encoding_model || 'cnn'
+    setEditForm({
+      first_name:        student.first_name        ?? "",
+      last_name:         student.last_name         ?? "",
+      matric_number:     student.matric_number     ?? "",
+      email:             student.email             ?? "",
+      phone:             student.phone             ?? "",
+      address:           student.address           ?? "",
+      department:        student.department        ?? 0,
+      specialization:    student.specialization    ?? 0,
+      level:             student.level             ?? 0,
+      date_of_birth:     student.date_of_birth     ?? "",
+      gender:            student.gender            ?? "",
+      emergency_contact: student.emergency_contact ?? "",
+      emergency_phone:   student.emergency_phone   ?? "",
     });
-    setIsEditDialogOpen(true);
+    setEditErrors({});
+    setIsEditOpen(true);
   };
 
-  const handleUpdateStudent = async () => {
-    if (!validateEditForm() || !editingStudent) return;
-    
+  const handleUpdate = async () => {
+    const errors = validateEditForm(editForm);
+    if (Object.keys(errors).length) { setEditErrors(errors); return; }
+    if (!editingStudent) return;
+
     try {
-      setFormLoading(true);
-      setError("");
-      
-      // For updates, we only send basic data (no face image unless specifically captured)
-      const updateData = {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        matric_number: formData.matric_number,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        department: formData.department,
-        specialization: formData.specialization || null,
-        level: formData.level,
-        ...(formData.date_of_birth && { date_of_birth: formData.date_of_birth }),
-        ...(formData.gender && { gender: formData.gender }),
-        ...(formData.emergency_contact && { emergency_contact: formData.emergency_contact }),
-        ...(formData.emergency_phone && { emergency_phone: formData.emergency_phone }),
-      };
-      
-      const updatedStudent = await djangoApi.updateStudent(editingStudent.id, updateData);
-      
-      setSuccess("Student updated successfully!");
-      setIsEditDialogOpen(false);
+      await updateStudent.mutateAsync({
+        id: editingStudent.id,
+        data: { ...editForm, specialization: editForm.specialization || null } as Record<string, unknown>,
+      });
+      toast.success("Student updated successfully.");
+      setIsEditOpen(false);
       setEditingStudent(null);
-      resetEditForm();
-      
-      // Refresh the list
-      loadStudents(pagination.page);
-      
-    } catch (err: any) {
-      console.error("Failed to update student:", err);
-      setError("Failed to update student: " + (err.message || "Unknown error"));
-    } finally {
-      setFormLoading(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update student.");
     }
   };
 
-  const handleDeleteStudent = async (studentId: number) => {
-    if (!confirm("Are you sure you want to delete this student? This action cannot be undone.")) {
-      return;
-    }
-    
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this student? This cannot be undone.")) return;
     try {
-      await djangoApi.deleteStudent(studentId);
-      setSuccess("Student deleted successfully!");
-      
-      // Refresh the list
-      loadStudents(pagination.page);
-      
-    } catch (err: any) {
-      console.error("Failed to delete student:", err);
-      setError("Failed to delete student: " + (err.message || "Unknown error"));
+      await deleteStudent.mutateAsync(id);
+      toast.success("Student deleted.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete student.");
     }
   };
 
-  const handleViewStudent = (student: Student) => {
-    setViewingStudent(student);
-    setIsViewDialogOpen(true);
-  };
+  const deptSpecializations = (deptId: number) =>
+    specializations.filter((s: { department: number }) => s.department === deptId);
 
-  const handleDepartmentChange = (departmentId: number) => {
-    setFormData(prev => ({
-      ...prev,
-      department: departmentId,
-      specialization: 0 // Reset specialization when department changes
-    }));
-  };
-
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'inactive': return 'bg-gray-100 text-gray-800';
-      case 'graduated': return 'bg-blue-100 text-blue-800';
-      case 'suspended': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getFilteredSpecializations = () => {
-    if (!filters.department) return specializations;
-    return specializations.filter(spec => spec.department === filters.department);
-  };
-
-  const getFormSpecializations = () => {
-    if (!formData.department) return [];
-    return specializations.filter(spec => spec.department === formData.department);
-  };
-
-  const clearMessages = () => {
-    setError("");
-    setSuccess("");
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setPagination(prev => ({ ...prev, page: newPage }));
-    loadStudents(newPage);
-  };
-
-  // Safe student rendering with error boundary
-  const renderStudentRow = (student: Student) => {
-    try {
-      // Safety check
-      if (!student || !student.id) {
-        console.warn('Invalid student object:', student);
-        return null;
-      }
-
-      const firstName = student.first_name || 'Unknown';
-      const lastName = student.last_name || 'Student';
-      const fullName = `${firstName} ${lastName}`;
-      const matricNumber = student.matric_number || 'N/A';
-      const email = student.email || 'No email';
-      const departmentName = student.department_name || 'Unknown';
-      const levelName = student.level_name || 'Unknown';
-      const status = student.status || 'inactive';
-      const attendanceRate = student.attendance_rate || 0;
-      const specializationName = student.specialization_name || 'No specialization';
-
-      return (
-        <TableRow key={student.id}>
-          <TableCell>
-            <div className="flex items-center space-x-3">
-              <Avatar>
-                <AvatarImage 
-                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${matricNumber}`} 
-                  alt={fullName}
-                />
-                <AvatarFallback>
-                  {firstName[0]}{lastName[0]}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="font-medium">{fullName}</div>
-                <div className="text-sm text-gray-500">{specializationName}</div>
-              </div>
-            </div>
-          </TableCell>
-          <TableCell className="font-mono">{matricNumber}</TableCell>
-          <TableCell>{email}</TableCell>
-          <TableCell>{departmentName}</TableCell>
-          <TableCell>{levelName}</TableCell>
-          <TableCell>
-            <Badge className={getStatusBadgeColor(status)}>
-              {status}
-            </Badge>
-          </TableCell>
-          <TableCell>
-            <div className="flex items-center space-x-2">
-              <div className="text-sm font-medium">{attendanceRate}%</div>
-              <div className="w-16 bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.max(0, attendanceRate))}%` }}
-                />
-              </div>
-            </div>
-          </TableCell>
-          <TableCell>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleViewStudent(student)}
-                title="View student details"
-              >
-                <Eye className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleEditStudent(student)}
-                title="Edit student"
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleDeleteStudent(student.id)}
-                className="text-red-600 hover:text-red-700"
-                title="Delete student"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </TableCell>
-        </TableRow>
-      );
-    } catch (error) {
-      console.error('Error rendering student row:', error, student);
-      return null;
-    }
-  };
-
-  const renderEditForm = () => (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="first_name">First Name *</Label>
-          <Input
-            id="first_name"
-            value={formData.first_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
-            className={formErrors.first_name ? 'border-red-500' : ''}
-            placeholder="Enter first name"
-          />
-          {formErrors.first_name && (
-            <p className="text-sm text-red-500 mt-1">{formErrors.first_name}</p>
-          )}
-        </div>
-
-        <div>
-          <Label htmlFor="last_name">Last Name *</Label>
-          <Input
-            id="last_name"
-            value={formData.last_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
-            className={formErrors.last_name ? 'border-red-500' : ''}
-            placeholder="Enter last name"
-          />
-          {formErrors.last_name && (
-            <p className="text-sm text-red-500 mt-1">{formErrors.last_name}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="matric_number">Matriculation Number *</Label>
-        <Input
-          id="matric_number"
-          value={formData.matric_number}
-          onChange={(e) => setFormData(prev => ({ ...prev, matric_number: e.target.value }))}
-          className={formErrors.matric_number ? 'border-red-500' : ''}
-          placeholder="Enter matriculation number"
-        />
-        {formErrors.matric_number && (
-          <p className="text-sm text-red-500 mt-1">{formErrors.matric_number}</p>
-        )}
-      </div>
-
-      <div>
-        <Label htmlFor="email">Email *</Label>
-        <Input
-          id="email"
-          type="email"
-          value={formData.email}
-          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-          className={formErrors.email ? 'border-red-500' : ''}
-          placeholder="Enter email address"
-        />
-        {formErrors.email && (
-          <p className="text-sm text-red-500 mt-1">{formErrors.email}</p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="phone">Phone</Label>
-          <Input
-            id="phone"
-            value={formData.phone}
-            onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-            placeholder="Enter phone number"
-          />
-        </div>
-        <div>
-          <Label htmlFor="date_of_birth">Date of Birth</Label>
-          <Input
-            id="date_of_birth"
-            type="date"
-            value={formData.date_of_birth}
-            onChange={(e) => setFormData(prev => ({ ...prev, date_of_birth: e.target.value }))}
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="address">Address</Label>
-        <Input
-          id="address"
-          value={formData.address}
-          onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-          placeholder="Enter address"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="gender">Gender</Label>
-          <Select 
-            value={formData.gender} 
-            onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select gender" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Male">Male</SelectItem>
-              <SelectItem value="Female">Female</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="emergency_contact">Emergency Contact</Label>
-          <Input
-            id="emergency_contact"
-            value={formData.emergency_contact}
-            onChange={(e) => setFormData(prev => ({ ...prev, emergency_contact: e.target.value }))}
-            placeholder="Emergency contact name"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="emergency_phone">Emergency Phone</Label>
-        <Input
-          id="emergency_phone"
-          value={formData.emergency_phone}
-          onChange={(e) => setFormData(prev => ({ ...prev, emergency_phone: e.target.value }))}
-          placeholder="Emergency contact phone"
-        />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label htmlFor="department">Department *</Label>
-          <Select 
-            value={formData.department.toString()} 
-            onValueChange={(value) => handleDepartmentChange(parseInt(value))}
-          >
-            <SelectTrigger className={formErrors.department ? 'border-red-500' : ''}>
-              <SelectValue placeholder="Select department" />
-            </SelectTrigger>
-            <SelectContent>
-              {departments.map(dept => (
-                <SelectItem key={dept.id} value={dept.id.toString()}>
-                  {dept.department_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {formErrors.department && (
-            <p className="text-sm text-red-500 mt-1">{formErrors.department}</p>
-          )}
-        </div>
-
-        <div>
-          <Label htmlFor="specialization">Specialization</Label>
-          <Select 
-            value={formData.specialization.toString()} 
-            onValueChange={(value) => setFormData(prev => ({ ...prev, specialization: parseInt(value) }))}
-            disabled={!formData.department}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select specialization" />
-            </SelectTrigger>
-            <SelectContent>
-              {getFormSpecializations().map(spec => (
-                <SelectItem key={spec.id} value={spec.id.toString()}>
-                  {spec.specialization_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label htmlFor="level">Level *</Label>
-          <Select 
-            value={formData.level.toString()} 
-            onValueChange={(value) => setFormData(prev => ({ ...prev, level: parseInt(value) }))}
-          >
-            <SelectTrigger className={formErrors.level ? 'border-red-500' : ''}>
-              <SelectValue placeholder="Select level" />
-            </SelectTrigger>
-            <SelectContent>
-              {levels.map(level => (
-                <SelectItem key={level.id} value={level.id.toString()}>
-                  {level.level_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {formErrors.level && (
-            <p className="text-sm text-red-500 mt-1">{formErrors.level}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="face_encoding_model">Face Recognition Model</Label>
-        <Select 
-          value={formData.face_encoding_model} 
-          onValueChange={(value) => setFormData(prev => ({ ...prev, face_encoding_model: value }))}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cnn">CNN (More Accurate)</SelectItem>
-            <SelectItem value="hog">HOG (Faster)</SelectItem>
-            <SelectItem value="facenet">FaceNet (Experimental)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-
+  // ── Render ──
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -957,38 +192,14 @@ export const Students = () => {
           <Users className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Students Management</h1>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Student
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" /> Add Student
         </Button>
       </div>
 
-      {/* Messages */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-          <Button variant="ghost" size="sm" onClick={clearMessages} className="ml-auto">
-            ×
-          </Button>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert className="border-green-200 bg-green-50">
-          <AlertCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">{success}</AlertDescription>
-          <Button variant="ghost" size="sm" onClick={clearMessages} className="ml-auto">
-            ×
-          </Button>
-        </Alert>
-      )}
-
       {/* Filters */}
       <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
@@ -997,8 +208,8 @@ export const Students = () => {
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Search students..."
-                  value={filters.search || ''}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                  value={filters.search ?? ""}
+                  onChange={e => handleFilterChange("search", e.target.value)}
                   className="pl-10"
                 />
               </div>
@@ -1006,19 +217,15 @@ export const Students = () => {
 
             <div>
               <Label>Department</Label>
-              <Select 
-                value={filters.department?.toString() || 'all'} 
-                onValueChange={(value) => handleFilterChange('department', value === 'all' ? undefined : parseInt(value))}
+              <Select
+                value={filters.department?.toString() ?? "all"}
+                onValueChange={v => handleFilterChange("department", v === "all" ? undefined : Number(v))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All departments" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All departments" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Departments</SelectItem>
-                  {departments.map(dept => (
-                    <SelectItem key={dept.id} value={dept.id.toString()}>
-                      {dept.department_name}
-                    </SelectItem>
+                  {departments.map((d: { id: number; department_name: string }) => (
+                    <SelectItem key={d.id} value={d.id.toString()}>{d.department_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1026,20 +233,16 @@ export const Students = () => {
 
             <div>
               <Label>Specialization</Label>
-              <Select 
-                value={filters.specialization?.toString() || 'all'} 
-                onValueChange={(value) => handleFilterChange('specialization', value === 'all' ? undefined : parseInt(value))}
+              <Select
+                value={filters.specialization?.toString() ?? "all"}
+                onValueChange={v => handleFilterChange("specialization", v === "all" ? undefined : Number(v))}
                 disabled={!filters.department}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All specializations" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All specializations" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Specializations</SelectItem>
-                  {getFilteredSpecializations().map(spec => (
-                    <SelectItem key={spec.id} value={spec.id.toString()}>
-                      {spec.specialization_name}
-                    </SelectItem>
+                  {deptSpecializations(filters.department ?? 0).map((s: { id: number; specialization_name: string }) => (
+                    <SelectItem key={s.id} value={s.id.toString()}>{s.specialization_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1047,19 +250,15 @@ export const Students = () => {
 
             <div>
               <Label>Level</Label>
-              <Select 
-                value={filters.level?.toString() || 'all'} 
-                onValueChange={(value) => handleFilterChange('level', value === 'all' ? undefined : parseInt(value))}
+              <Select
+                value={filters.level?.toString() ?? "all"}
+                onValueChange={v => handleFilterChange("level", v === "all" ? undefined : Number(v))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All levels" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All levels" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Levels</SelectItem>
-                  {levels.map(level => (
-                    <SelectItem key={level.id} value={level.id.toString()}>
-                      {level.level_name}
-                    </SelectItem>
+                  {levels.map((l: { id: number; level_name: string }) => (
+                    <SelectItem key={l.id} value={l.id.toString()}>{l.level_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1067,13 +266,11 @@ export const Students = () => {
 
             <div>
               <Label>Status</Label>
-              <Select 
-                value={filters.status || 'all'} 
-                onValueChange={(value) => handleFilterChange('status', value === 'all' ? undefined : value)}
+              <Select
+                value={filters.status ?? "all"}
+                onValueChange={v => handleFilterChange("status", v === "all" ? undefined : v)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
@@ -1086,24 +283,26 @@ export const Students = () => {
           </div>
 
           <div className="flex justify-between items-center mt-4">
-            <div className="text-sm text-gray-500">
-              {loading ? "Loading..." : `${pagination.count} students found`}
-            </div>
-            <Button 
-              variant="outline" 
-              onClick={() => loadStudents(pagination.page)}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <span className="text-sm text-gray-500">
+              {isLoading ? "Loading..." : `${totalCount} students found`}
+            </span>
+            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Students Table */}
+      {/* Table */}
       <Card>
         <CardContent className="p-0">
+          {isError && (
+            <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="text-sm">Failed to load students. Please try refreshing.</span>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -1119,7 +318,7 @@ export const Students = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8">
                       <div className="flex items-center justify-center space-x-2">
@@ -1131,41 +330,86 @@ export const Students = () => {
                 ) : students.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                      No students found. {Object.keys(filters).length > 0 ? 'Try adjusting your filters.' : 'Click "Add Student" to get started.'}
+                      {Object.keys(filters).length > 0
+                        ? "No students match the current filters."
+                        : 'No students yet. Click "Add Student" to get started.'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  students.map(renderStudentRow).filter(Boolean)
+                  students.map(student => (
+                    <TableRow key={student.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <Avatar>
+                            <AvatarImage
+                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${student.matric_number}`}
+                              alt={student.full_name}
+                            />
+                            <AvatarFallback>
+                              {student.first_name[0]}{student.last_name[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{student.full_name ?? `${student.first_name} ${student.last_name}`}</div>
+                            <div className="text-sm text-gray-500">{student.specialization_name ?? "—"}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono">{student.matric_number}</TableCell>
+                      <TableCell>{student.email}</TableCell>
+                      <TableCell>{student.department_name ?? "—"}</TableCell>
+                      <TableCell>{student.level_name ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge className={statusBadgeClass(student.status)}>{student.status}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium">{student.attendance_rate}%</span>
+                          <div className="w-16 bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{ width: `${Math.min(100, Math.max(0, student.attendance_rate))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button variant="ghost" size="sm" onClick={() => { setViewingStudent(student); setIsViewOpen(true); }}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(student)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => handleDelete(student.id)}
+                            disabled={deleteStudent.isPending}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
           </div>
 
           {/* Pagination */}
-          {pagination.totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex items-center justify-between px-6 py-4 border-t">
-              <div className="text-sm text-gray-500">
-                Page {pagination.page} of {pagination.totalPages} 
-                ({pagination.count} total students)
-              </div>
+              <span className="text-sm text-gray-500">
+                Page {page} of {totalPages} ({totalCount} total)
+              </span>
               <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>
+                  <ChevronLeft className="h-4 w-4" /> Previous
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>
+                  Next <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -1173,152 +417,207 @@ export const Students = () => {
         </CardContent>
       </Card>
 
-      {/* StudentCreateDialog Component */}
+      {/* Create dialog */}
       <StudentCreateDialog
-        isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
-        onSave={handleCreateStudentFromDialog}
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSave={handleCreateFromDialog}
         departments={departments}
         specializations={specializations}
         levels={levels}
       />
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      {/* Edit dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Edit Student</DialogTitle>
-          </DialogHeader>
-          {renderEditForm()}
+          <DialogHeader><DialogTitle>Edit Student</DialogTitle></DialogHeader>
+          <EditForm
+            form={editForm}
+            errors={editErrors}
+            departments={departments}
+            specializations={specializations}
+            levels={levels}
+            onChange={patch => setEditForm(prev => ({ ...prev, ...patch }))}
+            onDeptChange={id => setEditForm(prev => ({ ...prev, department: id, specialization: 0 }))}
+          />
           <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setIsEditDialogOpen(false);
-                setEditingStudent(null);
-                resetEditForm();
-              }}
-              disabled={formLoading}
-            >
+            <Button variant="outline" onClick={() => { setIsEditOpen(false); setEditingStudent(null); }}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleUpdateStudent} 
-              disabled={formLoading}
-            >
-              {formLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Student"
-              )}
+            <Button onClick={handleUpdate} disabled={updateStudent.isPending}>
+              {updateStudent.isPending
+                ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Updating...</>
+                : "Update Student"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+      {/* View dialog */}
+      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Student Details</DialogTitle>
-          </DialogHeader>
-          {viewingStudent && (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Avatar className="h-16 w-16">
-                  <AvatarImage 
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStudent.matric_number}`} 
-                    alt={viewingStudent.full_name}
-                  />
-                  <AvatarFallback>
-                    {viewingStudent.first_name[0]}{viewingStudent.last_name[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="text-lg font-semibold">{viewingStudent.full_name}</h3>
-                  <p className="text-gray-500">{viewingStudent.matric_number}</p>
-                  <Badge className={getStatusBadgeColor(viewingStudent.status)}>
-                    {viewingStudent.status}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Email</Label>
-                  <p>{viewingStudent.email || 'Not provided'}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Phone</Label>
-                  <p>{viewingStudent.phone || 'Not provided'}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Department</Label>
-                  <p>{viewingStudent.department_name}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Level</Label>
-                  <p>{viewingStudent.level_name}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Specialization</Label>
-                  <p>{viewingStudent.specialization_name || 'Not specified'}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Attendance Rate</Label>
-                  <p>{viewingStudent.attendance_rate}%</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Enrolled Courses</Label>
-                  <p>{viewingStudent.enrolled_courses_count || 0} courses</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Registration Date</Label>
-                  <p>{new Date(viewingStudent.registration_date).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              {viewingStudent.address && (
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Address</Label>
-                  <p>{viewingStudent.address}</p>
-                </div>
-              )}
-
-              {(viewingStudent.emergency_contact || viewingStudent.emergency_phone) && (
-                <div className="grid grid-cols-2 gap-4">
-                  {viewingStudent.emergency_contact && (
-                    <div>
-                      <Label className="text-sm font-medium text-gray-500">Emergency Contact</Label>
-                      <p>{viewingStudent.emergency_contact}</p>
-                    </div>
-                  )}
-                  {viewingStudent.emergency_phone && (
-                    <div>
-                      <Label className="text-sm font-medium text-gray-500">Emergency Phone</Label>
-                      <p>{viewingStudent.emergency_phone}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+          <DialogHeader><DialogTitle>Student Details</DialogTitle></DialogHeader>
+          {viewingStudent && <StudentDetail student={viewingStudent} />}
           <div className="flex justify-end pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setIsViewDialogOpen(false);
-                setViewingStudent(null);
-              }}
-            >
-              Close
-            </Button>
+            <Button variant="outline" onClick={() => { setIsViewOpen(false); setViewingStudent(null); }}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 };
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface EditFormProps {
+  form: EditFormData;
+  errors: EditFormErrors;
+  departments: Array<{ id: number; department_name: string }>;
+  specializations: Array<{ id: number; specialization_name: string; department: number }>;
+  levels: Array<{ id: number; level_name: string }>;
+  onChange: (patch: Partial<EditFormData>) => void;
+  onDeptChange: (id: number) => void;
+}
+
+function EditForm({ form, errors, departments, specializations, levels, onChange, onDeptChange }: EditFormProps) {
+  const specs = form.department
+    ? specializations.filter(s => s.department === form.department)
+    : [];
+
+  return (
+    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="First Name *" error={errors.first_name}>
+          <Input value={form.first_name} onChange={e => onChange({ first_name: e.target.value })}
+            className={errors.first_name ? "border-red-500" : ""} placeholder="First name" />
+        </Field>
+        <Field label="Last Name *" error={errors.last_name}>
+          <Input value={form.last_name} onChange={e => onChange({ last_name: e.target.value })}
+            className={errors.last_name ? "border-red-500" : ""} placeholder="Last name" />
+        </Field>
+      </div>
+
+      <Field label="Matriculation Number *" error={errors.matric_number}>
+        <Input value={form.matric_number} onChange={e => onChange({ matric_number: e.target.value })}
+          className={errors.matric_number ? "border-red-500" : ""} placeholder="Matric number" />
+      </Field>
+
+      <Field label="Email *" error={errors.email}>
+        <Input type="email" value={form.email} onChange={e => onChange({ email: e.target.value })}
+          className={errors.email ? "border-red-500" : ""} placeholder="Email" />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Phone">
+          <Input value={form.phone} onChange={e => onChange({ phone: e.target.value })} placeholder="Phone" />
+        </Field>
+        <Field label="Date of Birth">
+          <Input type="date" value={form.date_of_birth} onChange={e => onChange({ date_of_birth: e.target.value })} />
+        </Field>
+      </div>
+
+      <Field label="Address">
+        <Input value={form.address} onChange={e => onChange({ address: e.target.value })} placeholder="Address" />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Gender">
+          <Select value={form.gender} onValueChange={v => onChange({ gender: v })}>
+            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Male">Male</SelectItem>
+              <SelectItem value="Female">Female</SelectItem>
+              <SelectItem value="Other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Emergency Contact">
+          <Input value={form.emergency_contact} onChange={e => onChange({ emergency_contact: e.target.value })}
+            placeholder="Emergency contact" />
+        </Field>
+      </div>
+
+      <Field label="Emergency Phone">
+        <Input value={form.emergency_phone} onChange={e => onChange({ emergency_phone: e.target.value })}
+          placeholder="Emergency phone" />
+      </Field>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Field label="Department *" error={errors.department}>
+          <Select value={form.department.toString()} onValueChange={v => onDeptChange(Number(v))}>
+            <SelectTrigger className={errors.department ? "border-red-500" : ""}><SelectValue placeholder="Department" /></SelectTrigger>
+            <SelectContent>
+              {departments.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.department_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Specialization">
+          <Select value={form.specialization.toString()} onValueChange={v => onChange({ specialization: Number(v) })}
+            disabled={!form.department}>
+            <SelectTrigger><SelectValue placeholder="Specialization" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">None</SelectItem>
+              {specs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.specialization_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Level *" error={errors.level}>
+          <Select value={form.level.toString()} onValueChange={v => onChange({ level: Number(v) })}>
+            <SelectTrigger className={errors.level ? "border-red-500" : ""}><SelectValue placeholder="Level" /></SelectTrigger>
+            <SelectContent>
+              {levels.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.level_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Label className="mb-1 block">{label}</Label>
+      {children}
+      {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+}
+
+function StudentDetail({ student }: { student: Student }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center space-x-4">
+        <Avatar className="h-16 w-16">
+          <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${student.matric_number}`} />
+          <AvatarFallback>{student.first_name[0]}{student.last_name[0]}</AvatarFallback>
+        </Avatar>
+        <div>
+          <h3 className="text-lg font-semibold">{student.full_name ?? `${student.first_name} ${student.last_name}`}</h3>
+          <p className="text-gray-500">{student.matric_number}</p>
+          <Badge className={statusBadgeClass(student.status)}>{student.status}</Badge>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        {([
+          ["Email", student.email],
+          ["Phone", student.phone ?? "—"],
+          ["Department", student.department_name ?? "—"],
+          ["Level", student.level_name ?? "—"],
+          ["Specialization", student.specialization_name ?? "—"],
+          ["Attendance Rate", `${student.attendance_rate}%`],
+          ["Enrolled Courses", `${student.enrolled_courses.length}`],
+          ["Registration Date", new Date(student.registration_date).toLocaleDateString()],
+        ] as [string, string][]).map(([key, val]) => (
+          <div key={key}>
+            <span className="font-medium text-gray-500">{key}</span>
+            <p>{val}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
