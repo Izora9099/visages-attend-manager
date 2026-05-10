@@ -1,12 +1,8 @@
-// src/components/Header.tsx - Updated to use auth context while maintaining original design
-
-import { Menu, Bell, Search, User, Settings, LogOut, Moon, Sun } from "lucide-react";
+import { Bell, Search, User, Settings, LogOut, Moon, Sun, Command } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,18 +14,17 @@ import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  pageLabel?: string;
 }
 
-export const Header = ({ onMenuClick }: HeaderProps) => {
+export const Header = ({ pageLabel }: HeaderProps) => {
   const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   useEffect(() => {
-    // Check if user has a saved preference
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
@@ -37,154 +32,93 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
   }, []);
 
   const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    
-    if (newDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
   };
 
   const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Logout failed:', error);
-      // Force navigation to login even if logout API fails
-      navigate('/login', { replace: true });
-    }
+    try { await logout(); }
+    catch { navigate('/login', { replace: true }); }
   };
 
-  const handleProfile = () => {
-    navigate('/profile');
-  };
-
-  const handleSettings = () => {
-    navigate('/system-settings');
-  };
-
-  const getDisplayName = () => {
-    if (!user) return "Loading...";
-    return user.first_name || user.username;
-  };
-
-  const getUserInitials = () => {
+  const getInitials = () => {
     if (!user) return "U";
-    if (user.first_name && user.last_name) {
-      return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
-    }
+    if (user.first_name && user.last_name) return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
     return (user.first_name || user.username)[0].toUpperCase();
   };
 
-  const getUserRole = () => {
-    if (!user) return "User";
-    return user.is_superuser ? "Super Admin" : (user.role || "User");
-  };
-
   return (
-    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 h-16 relative z-10">
-      <div className="flex items-center justify-between h-full px-6">
-        {/* Left side */}
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMenuClick}
-            className="hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <Menu size={20} />
-          </Button>
-          
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+    <header className="sticky top-0 z-20 h-16 bg-background/80 backdrop-blur-md border-b border-hairline">
+      <div className="flex items-center justify-between h-full px-6 gap-6">
+        {/* Left — breadcrumb */}
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="eyebrow shrink-0">FACE.IT</p>
+          <span className="text-muted-foreground/40">/</span>
+          <p className="text-sm font-medium truncate">{pageLabel || 'Workspace'}</p>
+        </div>
+
+        {/* Center — search */}
+        <div className="hidden md:flex flex-1 max-w-md">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 h-4 w-4 pointer-events-none" />
             <Input
-              placeholder="Search..."
-              className="pl-10 w-64 bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600"
+              placeholder="Search students, courses, sessions…"
+              className="pl-9 pr-16 h-9 bg-secondary/50 border-transparent hover:bg-secondary/80 focus-visible:bg-card"
             />
+            <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 rounded border border-hairline bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground font-mono">
+              <Command className="h-2.5 w-2.5" />K
+            </kbd>
           </div>
         </div>
 
-        {/* Right side */}
-        <div className="flex items-center space-x-4">
-          {/* Theme toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleDarkMode}
-            className="hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+        {/* Right */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-sm" onClick={toggleDarkMode} className="text-muted-foreground hover:text-foreground">
+            {darkMode ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+          </Button>
+          <Button variant="ghost" size="icon-sm" className="relative text-muted-foreground hover:text-foreground">
+            <Bell className="h-[18px] w-[18px]" />
+            <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
           </Button>
 
-          {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <Bell size={20} />
-            <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
-          </Button>
+          <div className="h-6 w-px bg-hairline mx-2" />
 
-          {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || 'default'}`} />
-                  <AvatarFallback className="text-sm font-medium">
-                    {getUserInitials()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {getDisplayName()}
-                  </span>
-                  <Badge variant="outline" className="text-xs">
-                    {getUserRole()}
-                  </Badge>
+              <button className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-md hover:bg-secondary/60 transition-colors focus-ring">
+                <div className="h-8 w-8 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-semibold">
+                  {getInitials()}
                 </div>
-              </Button>
+                <div className="hidden lg:flex flex-col items-start leading-tight">
+                  <span className="text-sm font-medium">{user?.first_name || user?.username || '—'}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {user?.is_superuser ? 'Super admin' : (user?.role || 'User')}
+                  </span>
+                </div>
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <DropdownMenuContent align="end" className="w-56">
               {user?.email && (
                 <>
-                  <div className="px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                    {user.email}
-                  </div>
-                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground truncate">{user.email}</div>
+                  <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem 
-                onClick={handleProfile}
-                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <User className="mr-2 h-4 w-4" />
-                Profile
+              <DropdownMenuItem onClick={() => navigate('/profile')}>
+                <User className="mr-2 h-4 w-4" /> Profile
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={handleSettings}
-                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
+              <DropdownMenuItem onClick={() => navigate('/system-settings')}>
+                <Settings className="mr-2 h-4 w-4" /> Settings
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
-              <DropdownMenuItem 
-                onClick={handleLogout}
-                className="text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        
       </div>
     </header>
   );

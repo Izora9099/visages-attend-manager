@@ -1,48 +1,35 @@
-// src/components/RoleBasedDashboard.tsx - Updated to work with Django API
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Users, 
-  BookOpen, 
-  Calendar, 
-  TrendingUp, 
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  GraduationCap,
-  Building2
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { Button } from "@/components/ui/button";
+import {
+  Users, BookOpen, Calendar, AlertCircle, CheckCircle, Clock,
+  GraduationCap, Building2, Activity, ArrowUpRight, FileText,
 } from "lucide-react";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  LabelList
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, Area, AreaChart,
 } from "recharts";
 
 import { djangoApi } from '@/services/djangoApi';
 import { UserPermissions, DashboardStats, DepartmentStats, CourseStats, TeacherStats } from '@/types';
 
-interface PermissionChecker {
-  hasRole: (role: string | string[]) => boolean;
-  hasPermission: (permission: string) => boolean;
-}
-
 interface RoleBasedDashboardProps {
   userPermissions: UserPermissions;
   setActiveTab: (tab: string) => void;
 }
+
+const chartTooltip = {
+  contentStyle: {
+    background: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--hairline))',
+    borderRadius: '8px',
+    fontSize: '12px',
+    boxShadow: 'var(--shadow-md)',
+  },
+  cursor: { fill: 'hsl(var(--muted) / 0.4)' },
+};
 
 export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPermissions, setActiveTab }) => {
   const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
@@ -52,78 +39,44 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const permissionChecker: PermissionChecker = {
-    hasRole: (role: string | string[]) => {
-      if (Array.isArray(role)) {
-        return role.includes(userPermissions.role);
-      }
-      return userPermissions.role === role;
-    },
-    hasPermission: (permission: string) => {
-      return userPermissions.is_superuser || userPermissions.permissions.includes(permission);
-    }
-  };
+  const hasRole = (role: string | string[]) =>
+    Array.isArray(role) ? role.includes(userPermissions.role) : userPermissions.role === role;
 
   useEffect(() => {
-    loadDashboardData();
+    (async () => {
+      try {
+        setLoading(true); setError(null);
+        const stats = await djangoApi.getDashboardStats().catch(() => ({
+          total_students: 0, total_courses: 0, total_departments: 0, total_teachers: 0,
+          active_sessions: 0, total_attendance_records: 0, todays_attendance_count: 0,
+          todays_attendance_rate: 0, weekly_attendance_trend: [], recent_activities: [],
+        } as DashboardStats));
+        setDashboardData(stats);
+
+        if (hasRole(['superadmin', 'staff'])) {
+          const [d, c, t] = await Promise.all([
+            djangoApi.getDepartmentStats().catch(() => [] as DepartmentStats[]),
+            djangoApi.getCourseStats().catch(() => [] as CourseStats[]),
+            djangoApi.getTeacherStats().catch(() => [] as TeacherStats[]),
+          ]);
+          setDepartmentStats(d as DepartmentStats[]);
+          setCourseStats(c as CourseStats[]);
+          setTeacherStats(t as TeacherStats[]);
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load dashboard data');
+      } finally { setLoading(false); }
+    })();
   }, [userPermissions]);
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Load basic dashboard stats
-      const statsPromise = djangoApi.getDashboardStats().catch(err => {
-        console.warn('Dashboard stats not available:', err);
-        return {
-          total_students: 0,
-          total_courses: 0,
-          total_departments: 0,
-          total_teachers: 0,
-          active_sessions: 0,
-          total_attendance_records: 0,
-          todays_attendance_count: 0,
-          todays_attendance_rate: 0,
-          weekly_attendance_trend: [],
-          recent_activities: []
-        };
-      });
-
-      const promises = [statsPromise];
-
-      // Load additional stats based on role
-      if (permissionChecker.hasRole(['superadmin', 'staff'])) {
-        promises.push(
-          djangoApi.getDepartmentStats().catch(() => []),
-          djangoApi.getCourseStats().catch(() => []),
-          djangoApi.getTeacherStats().catch(() => [])
-        );
-      }
-
-      const results = await Promise.all(promises);
-      
-      setDashboardData(results[0]);
-      if (results.length > 1) {
-        setDepartmentStats(results[1]);
-        setCourseStats(results[2]);
-        setTeacherStats(results[3]);
-      }
-
-    } catch (err: any) {
-      console.error('Failed to load dashboard data:', err);
-      setError(err.message || 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Loading dashboard...</p>
+      <div className="space-y-6">
+        <div className="h-12 w-72 rounded bg-muted animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-32 rounded-lg border border-hairline bg-muted/40 animate-pulse" />
+          ))}
         </div>
       </div>
     );
@@ -131,420 +84,267 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
 
   if (error) {
     return (
-      <Alert className="border-red-200 bg-red-50">
-        <AlertCircle className="h-4 w-4 text-red-600" />
-        <AlertDescription className="text-red-700">
-          {error}
-        </AlertDescription>
-      </Alert>
+      <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+        <AlertCircle className="h-4 w-4 mt-0.5" />
+        <span>{error}</span>
+      </div>
     );
   }
 
-  // Superadmin Dashboard
-  if (permissionChecker.hasRole('superadmin')) {
+  const userName = userPermissions.username || 'User';
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
+
+  // ── SUPERADMIN ────────────────────────────────────────────────
+  if (hasRole('superadmin')) {
+    const trendData = dashboardData?.weekly_attendance_trend?.length
+      ? dashboardData.weekly_attendance_trend
+      : Array.from({ length: 7 }, (_, i) => ({ date: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i], attendance_rate: 0 }));
+
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">System Overview</h1>
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-            System Administrator
-          </Badge>
-        </div>
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow={`${greeting}, ${userName}`}
+          title="System overview."
+          description="A real-time look at attendance, sessions, and institutional health across departments."
+          actions={
+            <>
+              <Badge variant="accent" className="hidden sm:inline-flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent mr-1.5 animate-pulse" />
+                Live
+              </Badge>
+              <Button variant="outline" size="sm" onClick={() => setActiveTab('reports')}>
+                Reports <ArrowUpRight className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          }
+        />
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_students || 0}</div>
-            </CardContent>
-          </Card>
+        {/* Key metrics */}
+        <section>
+          <p className="eyebrow mb-4">Key metrics</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label="Students" value={dashboardData?.total_students ?? 0} icon={<Users className="h-4 w-4" />} hint="Active enrolment" />
+            <StatCard label="Courses" value={dashboardData?.total_courses ?? 0} icon={<BookOpen className="h-4 w-4" />} hint="Across all levels" />
+            <StatCard label="Teachers" value={dashboardData?.total_teachers ?? 0} icon={<GraduationCap className="h-4 w-4" />} hint="Faculty members" />
+            <StatCard label="Departments" value={dashboardData?.total_departments ?? 0} icon={<Building2 className="h-4 w-4" />} hint="Organisational units" />
+          </div>
+        </section>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_courses || 0}</div>
-            </CardContent>
-          </Card>
+        {/* Today + Trend */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-1 grid gap-4">
+            <StatCard
+              accent
+              label="Today's attendance"
+              value={`${(dashboardData?.todays_attendance_rate ?? 0).toFixed(1)}%`}
+              icon={<CheckCircle className="h-4 w-4" />}
+              hint={`${dashboardData?.todays_attendance_count ?? 0} students checked in`}
+            />
+            <StatCard label="Active sessions" value={dashboardData?.active_sessions ?? 0} icon={<Activity className="h-4 w-4" />} hint="Currently running" />
+            <StatCard label="Total records" value={dashboardData?.total_attendance_records ?? 0} icon={<FileText className="h-4 w-4" />} hint="All-time" />
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Departments</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_departments || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Teachers</CardTitle>
-              <GraduationCap className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_teachers || 0}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Today's Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today's Attendance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-600">
-                {dashboardData?.todays_attendance_rate?.toFixed(1) || 0}%
+          <div className="lg:col-span-2 rounded-lg border border-hairline bg-card p-6">
+            <div className="flex items-baseline justify-between mb-6">
+              <div>
+                <p className="eyebrow">This week</p>
+                <h3 className="display-serif text-2xl mt-1">Attendance trend</h3>
               </div>
-              <p className="text-sm text-gray-600">
-                {dashboardData?.todays_attendance_count || 0} students checked in
-              </p>
-            </CardContent>
-          </Card>
+              <Badge variant="outline" className="font-mono normal-case">7d</Badge>
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={trendData} margin={{ top: 6, right: 6, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
+                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...chartTooltip} />
+                <Area type="monotone" dataKey="attendance_rate" stroke="hsl(var(--accent))" strokeWidth={2} fill="url(#attGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Sessions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-600">
-                {dashboardData?.active_sessions || 0}
-              </div>
-              <p className="text-sm text-gray-600">Currently running</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Total Records</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">
-                {dashboardData?.total_attendance_records || 0}
-              </div>
-              <p className="text-sm text-gray-600">Attendance records</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Department Performance */}
+        {/* Department distribution */}
         {departmentStats.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Distribution by Department</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Total students: {departmentStats.reduce((sum, dept) => sum + (dept.total_students || 0), 0)}
+          <section className="rounded-lg border border-hairline bg-card p-6">
+            <div className="flex items-baseline justify-between mb-6">
+              <div>
+                <p className="eyebrow">By department</p>
+                <h3 className="display-serif text-2xl mt-1">Student distribution</h3>
+              </div>
+              <p className="text-xs text-muted-foreground num">
+                Total: {departmentStats.reduce((s, d) => s + (d.total_students || 0), 0)}
               </p>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart 
-                  data={[...departmentStats].sort((a, b) => (b.total_students || 0) - (a.total_students || 0))}
-                  layout="vertical"
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" />
-                  <YAxis 
-                    dataKey="department_name" 
-                    type="category" 
-                    width={120}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Tooltip 
-                    formatter={(value) => [`${value} students`, 'Number of Students']}
-                    labelFormatter={(label) => `Department: ${label}`}
-                  />
-                  <Bar 
-                    dataKey="total_students" 
-                    name="Students" 
-                    fill="#3b82f6"
-                    radius={[0, 4, 4, 0]}
-                  >
-                    {[...departmentStats]
-                      .sort((a, b) => (b.total_students || 0) - (a.total_students || 0))
-                      .map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={`hsl(${index * (360 / departmentStats.length)}, 70%, 60%)`}
-                        />
-                      ))
-                    }
-                    <LabelList 
-                      dataKey="total_students" 
-                      position="right" 
-                      formatter={(value: number) => `${value} (${((value / departmentStats.reduce((sum, dept) => sum + (dept.total_students || 0), 0)) * 100).toFixed(1)}%)`}
-                      style={{ fill: '#4b5563', fontSize: 12 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+            </div>
+            <ResponsiveContainer width="100%" height={Math.max(260, departmentStats.length * 36)}>
+              <BarChart
+                data={[...departmentStats].sort((a, b) => (b.total_students || 0) - (a.total_students || 0))}
+                layout="vertical"
+                margin={{ top: 4, right: 24, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" horizontal={false} />
+                <XAxis type="number" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="department_name" type="category" width={140} stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...chartTooltip} />
+                <Bar dataKey="total_students" fill="hsl(var(--foreground))" radius={[0, 4, 4, 0]} barSize={14} />
+              </BarChart>
+            </ResponsiveContainer>
+          </section>
         )}
 
-        {/* Recent Activities */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle>Recent System Activities</CardTitle>
-            <a 
-              href="#" 
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveTab('security');
-              }}
-            >
-              See All
-            </a>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {dashboardData?.recent_activities?.length > 0 ? (
-                dashboardData.recent_activities.slice(0, 3).map((activity: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded transition-colors">
+        {/* Recent activities */}
+        <section className="rounded-lg border border-hairline bg-card">
+          <div className="flex items-center justify-between p-6 pb-4">
+            <div>
+              <p className="eyebrow">Activity log</p>
+              <h3 className="display-serif text-2xl mt-1">Recent system events</h3>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setActiveTab('security')}>
+              View all <ArrowUpRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="border-t border-hairline divide-y divide-hairline">
+            {dashboardData?.recent_activities && dashboardData.recent_activities.length > 0 ? (
+              dashboardData.recent_activities.slice(0, 5).map((a: any, i: number) => (
+                <div key={i} className="flex items-center justify-between px-6 py-3.5 hover:bg-secondary/40 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-1.5 w-1.5 rounded-full ${a.status === 'success' ? 'bg-success' : a.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`} />
                     <div>
-                      <p className="font-medium">{activity.action || 'System Activity'}</p>
-                      <p className="text-sm text-gray-500">
-                        {activity.user || 'System'}
-                        <span className="mx-2">•</span>
-                        <span>{activity.time || 'Just now'}</span>
-                      </p>
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      {activity.status === 'success' ? (
-                        <span className="text-green-500">✓</span>
-                      ) : activity.status === 'failed' ? (
-                        <span className="text-red-500">✗</span>
-                      ) : null}
+                      <p className="text-sm font-medium">{a.action || 'System activity'}</p>
+                      <p className="text-xs text-muted-foreground">{a.user || 'System'} · {a.time || 'Just now'}</p>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-500">No recent activities found</p>
-                  <p className="text-sm text-gray-400 mt-1">System activities will appear here</p>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Staff Dashboard
-  if (permissionChecker.hasRole('staff')) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Student Management Dashboard</h1>
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-            Staff Member
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Students</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_students || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Available Courses</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.total_courses || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today's Attendance</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {dashboardData?.todays_attendance_rate?.toFixed(1) || 0}%
+              ))
+            ) : (
+              <div className="px-6 py-12 text-center">
+                <p className="text-sm text-muted-foreground">No recent activities yet.</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Events will appear here as they occur.</p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-              <AlertCircle className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">0</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Course Performance */}
-        {courseStats.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Course Enrollment Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={courseStats.slice(0, 10)}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="course_code" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="enrolled_students" fill="#3b82f6" name="Enrolled Students" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  }
-
-  // Teacher Dashboard
-  if (permissionChecker.hasRole('teacher')) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">My Teaching Dashboard</h1>
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-            Teacher
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">My Courses</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_courses || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">My Students</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_students || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.active_sessions || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Attendance Records</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {teacherStats.find(t => t.teacher_name === `${userPermissions.username}`)?.total_attendance_records || 0}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Next Session</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No upcoming sessions</p>
-                <p className="text-sm text-gray-400">Check your schedule or create a new session</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Sessions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="text-center py-8">
-                  <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No recent sessions</p>
-                  <p className="text-sm text-gray-400">Your recent teaching sessions will appear here</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Weekly Attendance Trend */}
-        {dashboardData?.weekly_attendance_trend && dashboardData.weekly_attendance_trend.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Weekly Attendance Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dashboardData.weekly_attendance_trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="attendance_rate" stroke="#3b82f6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  }
-
-  // Default Dashboard for users without specific roles
-  return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-center">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome to FACE.IT</h1>
-          <div>
-            <span className="text-gray-600 mb-4">
-              Role: </span>
-            <Badge variant="outline">{userPermissions.role}</Badge>
+            )}
           </div>
-        </div>
-        <p className="text-gray-600">Please contact your administrator for access permissions.</p>
+        </section>
       </div>
+    );
+  }
+
+  // ── STAFF ────────────────────────────────────────────────────
+  if (hasRole('staff')) {
+    return (
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow={`${greeting}, ${userName}`}
+          title="Student management."
+          description="Manage enrolment, monitor course attendance, and act on absence trends."
+          actions={<Badge variant="outline">Staff</Badge>}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Active students" value={dashboardData?.total_students ?? 0} icon={<Users className="h-4 w-4" />} />
+          <StatCard label="Available courses" value={dashboardData?.total_courses ?? 0} icon={<BookOpen className="h-4 w-4" />} />
+          <StatCard accent label="Today's rate" value={`${(dashboardData?.todays_attendance_rate ?? 0).toFixed(1)}%`} icon={<CheckCircle className="h-4 w-4" />} />
+          <StatCard label="Pending tasks" value={0} icon={<AlertCircle className="h-4 w-4" />} />
+        </div>
+
+        {courseStats.length > 0 && (
+          <div className="rounded-lg border border-hairline bg-card p-6">
+            <div className="mb-6">
+              <p className="eyebrow">Enrolment</p>
+              <h3 className="display-serif text-2xl mt-1">Course overview</h3>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={courseStats.slice(0, 10)} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
+                <XAxis dataKey="course_code" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...chartTooltip} />
+                <Bar dataKey="enrolled_students" fill="hsl(var(--foreground))" radius={[4, 4, 0, 0]} barSize={28} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── TEACHER ──────────────────────────────────────────────────
+  if (hasRole('teacher')) {
+    const me = teacherStats.find((t: any) => t.teacher_name === userPermissions.username);
+    return (
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow={`${greeting}, ${userName}`}
+          title="Your teaching dashboard."
+          description="Your courses, students, and recent attendance — all in one place."
+          actions={<Badge variant="outline">Teacher</Badge>}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="My courses" value={me?.total_courses ?? 0} icon={<BookOpen className="h-4 w-4" />} />
+          <StatCard label="My students" value={me?.total_students ?? 0} icon={<Users className="h-4 w-4" />} />
+          <StatCard accent label="Active sessions" value={dashboardData?.active_sessions ?? 0} icon={<Calendar className="h-4 w-4" />} />
+          <StatCard label="Records" value={me?.total_attendance_records ?? 0} icon={<FileText className="h-4 w-4" />} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[
+            { title: 'Next session', icon: Calendar, copy: 'No upcoming sessions', sub: 'Check your schedule or create one.' },
+            { title: 'Recent sessions', icon: Clock, copy: 'No recent sessions', sub: 'Your last sessions will appear here.' },
+          ].map(({ title, icon: Icon, copy, sub }) => (
+            <div key={title} className="rounded-lg border border-hairline bg-card p-6">
+              <p className="eyebrow">{title}</p>
+              <div className="mt-10 mb-6 flex flex-col items-center text-center">
+                <div className="h-10 w-10 rounded-md border border-hairline flex items-center justify-center text-muted-foreground mb-3">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-medium">{copy}</p>
+                <p className="text-xs text-muted-foreground mt-1">{sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {dashboardData?.weekly_attendance_trend && dashboardData.weekly_attendance_trend.length > 0 && (
+          <div className="rounded-lg border border-hairline bg-card p-6">
+            <div className="mb-6">
+              <p className="eyebrow">7d trend</p>
+              <h3 className="display-serif text-2xl mt-1">Weekly attendance</h3>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={dashboardData.weekly_attendance_trend} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
+                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...chartTooltip} />
+                <Line type="monotone" dataKey="attendance_rate" stroke="hsl(var(--accent))" strokeWidth={2.5} dot={{ r: 3, fill: 'hsl(var(--accent))' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── DEFAULT ──────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+      <p className="eyebrow mb-4">FACE.IT</p>
+      <h1 className="display-serif text-4xl mb-3">Welcome.</h1>
+      <p className="text-muted-foreground max-w-md mb-6">
+        Please contact your administrator for access permissions.
+      </p>
+      <Badge variant="outline">Role: {userPermissions.role}</Badge>
     </div>
   );
 };
