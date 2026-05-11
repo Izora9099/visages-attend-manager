@@ -4,21 +4,19 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorBoundary } from "@/components/shared";
+import { Login, ProtectedRoute } from "@/features/auth";
+import { AdminProfile, SystemSettings } from "@/features/admin";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { AdminProfile } from './components/AdminProfile';
-import { SystemSettings } from "./components/SystemSettings";
-import { Login } from "./components/Login";
-import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,       // 5 min before re-fetching in background
-      gcTime: 10 * 60 * 1000,          // 10 min before removing from cache
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
       retry: 1,
-      refetchOnWindowFocus: false,      // avoid jarring refetches when user alt-tabs
+      refetchOnWindowFocus: false,
     },
     mutations: {
       retry: 0,
