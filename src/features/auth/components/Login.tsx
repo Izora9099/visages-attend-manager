@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, ArrowRight, ScanFace, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -30,7 +30,7 @@ export function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password) {
-      setError('Please enter both username and password');
+      setError('Enter your username and password.');
       return;
     }
     setIsLoading(true);
@@ -45,97 +45,68 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr] bg-background">
-      {/* Left — editorial panel */}
-      <aside className="relative hidden lg:flex flex-col justify-between p-12 xl:p-16 ink-panel overflow-hidden">
-        {/* Animated gradient blobs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div style={{
-            position: 'absolute', borderRadius: '50%', filter: 'blur(72px)',
-            width: '65%', height: '65%', top: '-15%', left: '-15%',
-            background: 'radial-gradient(circle, hsl(22 80% 52%) 0%, transparent 70%)',
-            opacity: 0.22,
-            animation: 'blob-float 10s ease-in-out infinite',
-          }} />
-          <div style={{
-            position: 'absolute', borderRadius: '50%', filter: 'blur(80px)',
-            width: '55%', height: '55%', bottom: '-12%', right: '-12%',
-            background: 'radial-gradient(circle, hsl(14 65% 40%) 0%, transparent 70%)',
-            opacity: 0.18,
-            animation: 'blob-float-alt 8s ease-in-out infinite',
-          }} />
-          <div style={{
-            position: 'absolute', borderRadius: '50%', filter: 'blur(90px)',
-            width: '45%', height: '45%', top: '35%', right: '5%',
-            background: 'radial-gradient(circle, hsl(38 70% 48%) 0%, transparent 70%)',
-            animation: 'blob-float-slow 13s ease-in-out infinite 2s',
-          }} />
-        </div>
-
-        <div className="relative flex items-center gap-3 z-10">
-          <div className="h-9 w-9 rounded-md bg-accent/90 flex items-center justify-center shadow-md">
-            <ScanFace className="h-5 w-5 text-accent-foreground" />
-          </div>
-          <div className="leading-tight">
-            <p className="font-display text-lg tracking-tight text-sidebar-foreground">FACE.IT</p>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-sidebar-foreground/50">Attendance Intelligence</p>
+    <div className="grid min-h-screen bg-paper lg:grid-cols-[1.05fr_1fr]">
+      {/* Brand panel — flat navy, no gradients */}
+      <aside className="hidden flex-col justify-between bg-navy p-12 text-rail-ink lg:flex xl:p-16">
+        <div className="flex items-center gap-3">
+          <img src="/Uploads/FaceIt logo no bg__cropped.png" alt="" className="h-10 w-10 object-contain" />
+          <div>
+            <p className="font-display text-lg font-bold leading-5 tracking-[0.02em]">FACE.IT</p>
+            <p className="text-[10px] font-medium uppercase leading-[14px] tracking-[0.2em] text-rail-muted">Attendance console</p>
           </div>
         </div>
 
-        <div className="relative z-10 max-w-xl">
-          <h2 className="display-serif font-light text-5xl xl:text-6xl leading-[1.05] text-sidebar-foreground text-balance">
-            Attendance, <em className="text-accent not-italic font-normal">measured</em> with the
-            precision of a&nbsp;modern&nbsp;register.
-          </h2>
-          <p className="mt-8 text-sidebar-foreground/70 text-[15px] leading-relaxed max-w-md">
-            A quietly powerful platform for departments who treat presence as data, and
-            data as evidence. Built for institutions, refined for daily use.
+        <div className="max-w-xl">
+          <h2 className="text-display-xl text-balance">Attendance, measured.</h2>
+          <p className="mt-6 max-w-md text-body-l text-rail-muted">
+            Run sessions, verify students by face and prove who was in the room — with the
+            confidence score and a manual fallback on every match.
           </p>
         </div>
 
-        <div className="relative z-10 grid grid-cols-3 gap-8 max-w-md">
+        <dl className="grid max-w-md grid-cols-3 gap-8 border-t border-rail-hairline pt-6">
           {[
-            ['98.7', 'Recognition accuracy'],
-            ['12k+', 'Daily check-ins'],
-            ['<400ms', 'Verification time'],
+            ['0.75', 'Match threshold'],
+            ['5', 'Face images per student'],
+            ['75%', 'Eligibility minimum'],
           ].map(([v, l]) => (
-            <div key={l}>
-              <p className="display-serif text-2xl text-sidebar-foreground num font-light">{v}</p>
-              <p className="text-[11px] uppercase tracking-wider text-sidebar-foreground/50 mt-1">{l}</p>
+            <div key={l} className="flex flex-col-reverse gap-1">
+              <dt className="text-[11px] font-medium uppercase leading-4 tracking-[0.12em] text-rail-muted">{l}</dt>
+              <dd className="num font-display text-[28px] font-semibold leading-8 text-scan-pale">{v}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       </aside>
 
-      {/* Right — form */}
-      <main className="flex items-center justify-center p-6 sm:p-12 paper">
-        <div className="w-full max-w-sm animate-fade-up">
-          {/* mobile brand */}
-          <div className="flex lg:hidden items-center gap-2 mb-10">
-            <div className="h-8 w-8 rounded-md bg-foreground flex items-center justify-center">
-              <ScanFace className="h-4 w-4 text-background" />
-            </div>
-            <p className="font-display text-base">FACE.IT</p>
+      {/* Form */}
+      <main className="flex items-center justify-center p-4 sm:p-12">
+        <div className="w-full max-w-sm">
+          {/* Mobile brand */}
+          <div className="mb-10 flex items-center gap-2 lg:hidden">
+            <img src="/Uploads/FaceIt logo no bg__cropped.png" alt="" className="h-8 w-8 object-contain" />
+            <p className="font-display text-base font-bold tracking-[0.02em]">FACE.IT</p>
           </div>
 
-          <p className="eyebrow mb-3">Sign in</p>
-          <h1 className="display-serif text-4xl leading-[1.05] text-balance">
-            Welcome back.
-          </h1>
-          <p className="text-muted-foreground text-sm mt-3 mb-10">
-            Enter your credentials to access the dashboard.
+          <p className="eyebrow mb-2">Sign in</p>
+          <h1 className="text-heading-1 text-ink">Welcome back</h1>
+          <p className="mb-8 mt-2 text-ink-muted">
+            Sign in with the account your administrator gave you.
           </p>
 
           {error && (
-            <div className="mb-6 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive animate-fade-in">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div
+              role="alert"
+              id="login-error"
+              className="mb-6 flex items-start gap-3 rounded-md bg-absent-soft px-4 py-3 text-sm leading-5 text-absent"
+            >
+              <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="username" className="eyebrow">Username</Label>
+          <form onSubmit={handleLogin} className="flex flex-col gap-5" noValidate>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="username" className="text-[13px] font-medium leading-[18px] text-ink">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -144,21 +115,24 @@ export function Login() {
                 placeholder="jane.doe"
                 disabled={isLoading}
                 autoComplete="username"
+                aria-invalid={!!error || undefined}
+                aria-describedby={error ? "login-error" : undefined}
                 required
-                className="h-11"
+                className="h-control-lg text-[15px]"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="eyebrow">Password</Label>
-                <button
+                <Label htmlFor="password" className="text-[13px] font-medium leading-[18px] text-ink">Password</Label>
+                <Button
                   type="button"
-                  className="text-[11px] uppercase tracking-wider text-accent hover:underline"
+                  variant="link"
+                  className="text-[13px]"
                   onClick={() => toast.info("Contact your system administrator to reset your password.")}
                 >
-                  Forgot?
-                </button>
+                  Forgot password
+                </Button>
               </div>
               <div className="relative">
                 <Input
@@ -166,47 +140,34 @@ export function Login() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   disabled={isLoading}
                   autoComplete="current-password"
+                  aria-invalid={!!error || undefined}
+                  aria-describedby={error ? "login-error" : undefined}
                   required
-                  className="h-11 pr-10"
+                  className="h-control-lg pr-12 text-[15px]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(s => !s)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground transition-colors"
-                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-md text-ink-muted transition-colors duration-120 hover:text-ink"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <Button
-              type="submit"
-              variant="ink"
-              size="lg"
-              className="w-full mt-2 group"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  <span>Signing in</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign in</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                </>
-              )}
+            <Button type="submit" variant="primary" size="lg" block loading={isLoading} className="mt-2">
+              {isLoading ? 'Signing in' : 'Sign in'}
+              {!isLoading && <ArrowRight aria-hidden="true" />}
             </Button>
           </form>
 
-          <div className="mt-12 pt-6 border-t border-hairline text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70 flex justify-between">
+          <div className="mt-12 flex justify-between border-t border-hairline pt-6 text-caption text-ink-muted">
             <span>FACE.IT &copy; 2026</span>
-            <span>Secure by design</span>
+            <span>Biometric data stays on your institution's server</span>
           </div>
         </div>
       </main>
