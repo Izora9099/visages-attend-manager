@@ -90,12 +90,12 @@ const Index = () => {
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
-      <div className={`transition-all duration-300 ${isMobile ? "ml-0" : sidebarOpen ? "ml-64" : "ml-[68px]"}`}>
+      <div className={`transition-[margin] duration-200 ease-out ${isMobile ? "ml-0" : sidebarOpen ? "ml-rail" : "ml-rail-collapsed"}`}>
         <Header
           onMenuClick={() => setSidebarOpen(!sidebarOpen)}
           pageLabel={TAB_LABELS[activeTab]}
         />
-        <main key={activeTab} className="px-8 py-10 max-w-[1400px] mx-auto animate-fade-in">
+        <main key={activeTab} className="mx-auto w-full max-w-content px-4 py-8 animate-fade-in md:px-8">
           {renderContent()}
         </main>
       </div>
