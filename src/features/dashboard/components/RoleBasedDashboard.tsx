@@ -22,13 +22,15 @@ interface RoleBasedDashboardProps {
 
 const chartTooltip = {
   contentStyle: {
-    background: 'hsl(var(--popover))',
-    border: '1px solid hsl(var(--hairline))',
-    borderRadius: '8px',
+    background: 'var(--surface)',
+    border: '1px solid var(--hairline)',
+    borderRadius: 'var(--radius-md)',
+    color: 'var(--ink)',
     fontSize: '12px',
+    lineHeight: '18px',
     boxShadow: 'var(--shadow-md)',
   },
-  cursor: { fill: 'hsl(var(--muted) / 0.4)' },
+  cursor: { fill: 'var(--surface-sunken)', opacity: 0.7 },
 };
 
 export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPermissions, setActiveTab }) => {
@@ -116,8 +118,7 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
           description="A real-time look at attendance, sessions, and institutional health across departments."
           actions={
             <>
-              <Badge variant="accent" className="hidden sm:inline-flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent mr-1.5 animate-pulse" />
+              <Badge variant="signal" live className="hidden sm:inline-flex">
                 Live
               </Badge>
               <Button variant="outline" size="sm" onClick={() => setActiveTab('reports')}>
@@ -164,15 +165,15 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
               <AreaChart data={trendData} margin={{ top: 6, right: 6, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0} />
+                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--chart-grid)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip {...chartTooltip} />
-                <Area type="monotone" dataKey="attendance_rate" stroke="hsl(var(--accent))" strokeWidth={2} fill="url(#attGrad)" />
+                <Area type="monotone" dataKey="attendance_rate" stroke="var(--chart-1)" strokeWidth={2} fill="url(#attGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -196,11 +197,11 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
                 layout="vertical"
                 margin={{ top: 4, right: 24, left: 8, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" horizontal={false} />
-                <XAxis type="number" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis dataKey="department_name" type="category" width={140} stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--chart-grid)" horizontal={false} />
+                <XAxis type="number" stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="department_name" type="category" width={140} stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip {...chartTooltip} />
-                <Bar dataKey="total_students" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} barSize={14} />
+                <Bar dataKey="total_students" fill="var(--chart-1)" radius={[0, 4, 4, 0]} barSize={14} />
               </BarChart>
             </ResponsiveContainer>
           </section>
@@ -268,11 +269,11 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
             </div>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={courseStats.slice(0, 10)} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
-                <XAxis dataKey="course_code" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--chart-grid)" vertical={false} />
+                <XAxis dataKey="course_code" stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip {...chartTooltip} />
-                <Bar dataKey="enrolled_students" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} barSize={28} />
+                <Bar dataKey="enrolled_students" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={28} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -326,11 +327,11 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({ userPerm
             </div>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={dashboardData.weekly_attendance_trend} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--hairline))" vertical={false} />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--chart-grid)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis stroke="var(--chart-axis)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip {...chartTooltip} />
-                <Line type="monotone" dataKey="attendance_rate" stroke="hsl(var(--accent))" strokeWidth={2.5} dot={{ r: 3, fill: 'hsl(var(--accent))' }} />
+                <Line type="monotone" dataKey="attendance_rate" stroke="var(--chart-1)" strokeWidth={2.5} dot={{ r: 3, fill: 'var(--chart-1)' }} />
               </LineChart>
             </ResponsiveContainer>
           </div>

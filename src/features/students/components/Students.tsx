@@ -377,7 +377,7 @@ export const Students = () => {
                           <span className="text-sm font-medium num">{student.attendance_rate}%</span>
                           <div className="w-16 bg-secondary rounded-full h-1.5 overflow-hidden">
                             <div
-                              className="bg-accent h-1.5 rounded-full transition-all"
+                              className="bg-signal h-1.5 rounded-full transition-all"
                               style={{ width: `${Math.min(100, Math.max(0, student.attendance_rate))}%` }}
                             />
                           </div>

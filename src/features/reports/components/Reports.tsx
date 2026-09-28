@@ -201,17 +201,17 @@ export const Reports = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={monthlyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis domain={[60, 100]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
+                <YAxis domain={[60, 100]} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Line
                   type="monotone"
                   dataKey="attendance"
                   name="Attendance %"
-                  stroke="hsl(var(--accent))"
+                  stroke="var(--chart-1)"
                   strokeWidth={2.5}
-                  dot={{ fill: "hsl(var(--accent))", r: 3 }}
+                  dot={{ fill: "var(--chart-1)", r: 3 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -225,12 +225,12 @@ export const Reports = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={filteredCourses} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="course" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                <XAxis dataKey="course" tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend
-                  wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }}
+                  wrapperStyle={{ fontSize: 11, color: "var(--chart-axis)" }}
                 />
                 <Bar dataKey="present" name="Present" fill="#22c55e" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[3, 3, 0, 0]} />

@@ -173,7 +173,7 @@ export function NotificationsPanel() {
           <div className="border-t border-border p-3">
             <button
               onClick={markAllAsRead}
-              className="w-full text-sm text-center text-accent hover:text-accent/70 font-medium transition-colors"
+              className="w-full text-sm text-center text-signal hover:underline font-medium transition-colors"
             >
               Mark all as read
             </button>
