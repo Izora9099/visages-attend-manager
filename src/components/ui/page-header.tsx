@@ -9,23 +9,23 @@ interface PageHeaderProps {
   className?: string;
 }
 
+/** Top of every screen: eyebrow, H1, description, actions. */
 export function PageHeader({ eyebrow, title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex flex-col gap-6 pb-8 mb-8 border-b border-hairline animate-fade-up", className)}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2 max-w-2xl">
-          {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-          <h1 className="display-serif text-4xl md:text-5xl leading-[1.05] text-balance">
-            {title}
-          </h1>
-          {description && (
-            <p className="text-muted-foreground text-[15px] leading-relaxed text-pretty max-w-xl pt-1">
-              {description}
-            </p>
-          )}
-        </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+    <header
+      className={cn(
+        "mb-8 flex flex-wrap items-end justify-between gap-6 border-b border-hairline pb-8",
+        className
+      )}
+    >
+      <div className="flex max-w-prose flex-col gap-2">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+        <h1 className="text-heading-1 text-balance text-ink md:text-display-l">{title}</h1>
+        {description && (
+          <p className="max-w-[560px] text-body-l text-pretty text-ink-muted">{description}</p>
+        )}
       </div>
-    </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </header>
   );
 }
